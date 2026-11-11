@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Tea Fusion — We Eat Tea</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; }
+  html,body { height:100%; background:#0c1220; overflow:hidden; font-family:'Segoe UI', system-ui, sans-serif; }
+  #wrap { position:relative; width:100%; height:100%; display:flex; align-items:center; justify-content:center; padding:10px; }
+  #panel { display:flex; flex-direction:column; align-items:center; gap:10px; max-width:420px; width:100%; }
+  #topbar { display:flex; justify-content:space-between; align-items:center; width:100%; }
+  #topbar h1 { font-size:21px; color:#ffcf4d; }
+  #scores { display:flex; gap:8px; }
+  .scorebox { background:#151d33; border-radius:8px; padding:5px 13px; text-align:center; color:#fff; }
+  .scorebox .label { font-size:10px; color:#8fa0c9; letter-spacing:1px; }
+  .scorebox .value { font-size:16px; font-weight:800; color:#ffcf4d; }
+  #boardWrap { position:relative; width:100%; aspect-ratio:1/1; max-width:400px; touch-action:none; }
+  #grid {
+    position:absolute; inset:0; background:#151d33; border-radius:10px;
+    display:grid; grid-template-columns:repeat(4,1fr); grid-template-rows:repeat(4,1fr); gap:8px; padding:8px;
+  }
+  .cellbg { background:rgba(255,255,255,0.04); border-radius:8px; }
+  #tiles { position:absolute; inset:0; }
+  .tile {
+    position:absolute; left:0; top:0; border-radius:8px; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; font-weight:800; color:#1a1a2e;
+    transition:left 0.12s ease, top 0.12s ease;
+    box-shadow:0 3px 8px rgba(0,0,0,0.3);
+  }
+  .tile .emo { line-height:1; }
+  .tile .val { font-size:10px; opacity:0.7; margin-top:1px; }
+  .newpop { animation:pop 0.2s ease; }
+  .mergepop { animation:mpop 0.2s ease; z-index:5; }
+  @keyframes pop { 0%{ transform:scale(0.3);} 100%{ transform:scale(1);} }
+  @keyframes mpop { 0%{ transform:scale(1);} 50%{ transform:scale(1.22);} 100%{ transform:scale(1);} }
+  #controls { display:flex; gap:8px; }
+  button.btn2 {
+    background:linear-gradient(#ffae52,#e8722a); border:none; color:#fff; font-weight:700;
+    font-size:13px; padding:9px 18px; border-radius:20px; cursor:pointer; box-shadow:0 4px 0 #a84e14;
+  }
+  button.btn2:active { transform:translateY(3px); box-shadow:0 1px 0 #a84e14; }
+  #chain { display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:2px; max-width:400px; }
+  #chain .step { font-size:17px; opacity:0.3; transition:opacity .2s, transform .2s; filter:grayscale(0.7); }
+  #chain .step.reached { opacity:1; filter:none; }
+  #chain .step.top { transform:scale(1.35); }
+  #chain .arrow { color:#46557f; font-size:10px; }
+  #hint { color:#7c8bb0; font-size:11px; text-align:center; }
+  #overlay {
+    position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; background:rgba(8,12,24,0.94); color:#fff; padding:18px; z-index:10; border-radius:10px;
+  }
+  #overlay.show { display:flex; }
+  #overlay h1 { font-size:clamp(22px,6vw,30px); margin-bottom:8px; color:#ffcf4d; }
+  #overlay .sub { color:#a9b6d6; margin-bottom:14px; font-size:13px; max-width:310px; line-height:1.5; }
+  #overlay .stat { color:#ffcf4d; font-size:17px; margin-bottom:6px; font-weight:700; }
+  .howto { text-align:left; font-size:13px; color:#c9d3ea; line-height:1.45; margin-bottom:12px; max-width:310px; }
+  .howto li { margin-bottom:5px; list-style:none; display:flex; gap:8px; }
+  .howto li b { color:#ffcf4d; min-width:16px; }
+  .demo { display:flex; align-items:center; justify-content:center; gap:8px; margin:0 0 12px; font-size:26px; }
+  .demo .plus,.demo .eq { color:#7c8bb0; font-size:18px; font-weight:800; }
+  .demo .box { background:rgba(255,255,255,0.08); border-radius:8px; padding:4px 7px; }
+  .btnrow { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
+  button.btn {
+    background:linear-gradient(#ffae52,#e8722a); border:none; color:#fff; font-weight:800;
+    font-size:15px; padding:12px 28px; border-radius:28px; cursor:pointer;
+    box-shadow:0 6px 0 #a84e14, 0 8px 16px rgba(0,0,0,0.4);
+  }
+  button.btn.alt { background:linear-gradient(#5b6a95,#3e4b73); box-shadow:0 6px 0 #262f4d, 0 8px 16px rgba(0,0,0,0.4); }
+  button.btn:active { transform:translateY(4px); box-shadow:0 2px 0 #a84e14; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="panel">
+    <div id="topbar">
+      <h1>🍜 Tea Fusion</h1>
+      <div id="scores">
+        <div class="scorebox"><div class="label">SCORE</div><div class="value" id="score">0</div></div>
+        <div class="scorebox"><div class="label">BEST</div><div class="value" id="best">0</div></div>
+      </div>
+    </div>
+    <div id="boardWrap">
+      <div id="grid"></div>
+      <div id="tiles"></div>
+      <div id="overlay"></div>
+    </div>
+    <div id="chain"></div>
+    <div id="controls">
+      <button class="btn2" id="newGameBtn">New Game</button>
+      <button class="btn2" id="undoBtn">Undo</button>
+      <button class="btn2" id="helpBtn">How to play</button>
+      <button class="btn2" id="lbBtn" style="display:none">🏆 Ranks</button>
+    </div>
+    <div id="hint">Swipe or use arrow keys / WASD</div>
+  </div>
+</div>
+
+<script>
+  // ===== Leaderboard: paste your Cloudflare Worker URL here (leave '' to turn the leaderboard off) =====
+  window.TEA_LB_API  = 'https://tea-leaderboard.usoemoe.workers.dev';   // e.g. 'https://tea-leaderboard.yourname.workers.dev'
+  window.TEA_LB_GAME = 'tea-fusion';
+</script>
+<!--LB-WIDGET--><script>
+/* Tea Games leaderboard widget — shared by every game.
+   Needs window.TEA_LB_API (Worker URL) and window.TEA_LB_GAME set before this runs.
+   With no API URL it does nothing, so games work fine without a backend. */
+(function(){
+  var API = String(window.TEA_LB_API || '').replace(/\/+$/, '');
+  var GAME = String(window.TEA_LB_GAME || '');
+  var enabled = !!API && !!GAME;
+  var T = window.TeaLB = { enabled: enabled, submit: function(){}, open: function(){} };
+  if(!enabled) return;
+
+  var PID_KEY = 'tealb_pid', NAME_KEY = 'tealb_name';
+  function lsGet(k){ try{ return localStorage.getItem(k) || ''; }catch(e){ return ''; } }
+  function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+  var pid = lsGet(PID_KEY);
+  if(!pid){
+    pid = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+        : (Date.now().toString(36) + Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 8));
+    lsSet(PID_KEY, pid);
+  }
+
+  var css = '\
+.tlb-back{position:fixed;inset:0;z-index:99999;display:none;align-items:center;justify-content:center;padding:14px;background:rgba(5,8,18,.8);font-family:"Segoe UI",system-ui,sans-serif;-webkit-tap-highlight-color:transparent}\
+.tlb-back.show{display:flex}\
+.tlb-card{width:min(94vw,440px);max-height:92vh;overflow:auto;background:linear-gradient(160deg,#25335e,#161d3a);border:2px solid #ffcf4d;border-radius:18px;padding:18px 16px 16px;color:#e8eefc;box-shadow:0 0 50px rgba(255,207,77,.25);text-align:center}\
+.tlb-card *{box-sizing:border-box;user-select:text}\
+.tlb-title{font-size:20px;font-weight:900;color:#ffcf4d;margin-bottom:4px}\
+.tlb-sub{font-size:12px;color:#9fb0d8;margin-bottom:10px;letter-spacing:1px}\
+.tlb-score{font-size:36px;font-weight:900;color:#fff;margin:2px 0 10px}\
+.tlb-in{width:100%;padding:11px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:#0f1630;color:#fff;font-size:16px;text-align:center;outline:none}\
+.tlb-in:focus{border-color:#ffcf4d}\
+.tlb-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:12px}\
+.tlb-btn{background:linear-gradient(#ffae52,#e8722a);color:#fff;border:none;font-weight:800;font-size:14px;padding:10px 20px;border-radius:22px;cursor:pointer;box-shadow:0 4px 0 #a84e14}\
+.tlb-btn:active{transform:translateY(3px);box-shadow:0 1px 0 #a84e14}\
+.tlb-btn.alt{background:linear-gradient(#6b7bb0,#46557f);box-shadow:0 4px 0 #2a3558}\
+.tlb-btn:disabled{opacity:.5}\
+.tlb-msg{min-height:20px;margin-top:10px;font-size:13px;color:#9fb0d8}\
+.tlb-msg.err{color:#ff8a8a}\
+.tlb-ranks{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:6px 0 2px}\
+.tlb-rank{background:rgba(255,255,255,.08);border-radius:12px;padding:8px 12px;min-width:92px}\
+.tlb-rank b{display:block;font-size:22px;color:#ffcf4d}\
+.tlb-rank span{font-size:11px;color:#9fb0d8}\
+.tlb-tabs{display:flex;gap:6px;justify-content:center;margin:8px 0}\
+.tlb-tab{flex:1;background:rgba(255,255,255,.08);color:#c9d3ea;border:none;border-radius:16px;padding:7px 4px;font-size:13px;font-weight:700;cursor:pointer}\
+.tlb-tab.on{background:#ffcf4d;color:#1a1a2e}\
+.tlb-list{margin:8px 0 0;text-align:left}\
+.tlb-li{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:10px;font-size:14px}\
+.tlb-li:nth-child(odd){background:rgba(255,255,255,.04)}\
+.tlb-li.me{background:rgba(255,207,77,.2);outline:1px solid #ffcf4d}\
+.tlb-r{width:34px;text-align:center;font-weight:900;color:#9fb0d8}\
+.tlb-li:nth-child(1) .tlb-r{color:#ffd54d;font-size:17px}.tlb-li:nth-child(2) .tlb-r{color:#d8dde8;font-size:16px}.tlb-li:nth-child(3) .tlb-r{color:#e0955a;font-size:16px}\
+.tlb-n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\
+.tlb-c{font-size:11px;color:#9fb0d8;white-space:nowrap}\
+.tlb-s{font-weight:800;color:#ffcf4d;font-variant-numeric:tabular-nums}\
+.tlb-gap{text-align:center;color:#6f7fa8;font-size:12px;padding:2px}\
+.tlb-empty{padding:18px 8px;color:#9fb0d8;font-size:13px;text-align:center}';
+  var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+
+  var back = document.createElement('div'); back.className = 'tlb-back';
+  var card = document.createElement('div'); card.className = 'tlb-card';
+  back.appendChild(card); document.body.appendChild(back);
+  // keep typing in the box from triggering game controls
+  ['keydown','keyup','keypress'].forEach(function(ev){ back.addEventListener(ev, function(e){ if(e.key !== 'Escape') e.stopPropagation(); }); });
+  back.addEventListener('click', function(e){ if(e.target === back) close(); });
+  window.addEventListener('keydown', function(e){ if(e.key === 'Escape' && back.classList.contains('show')) close(); });
+
+  function close(){ back.classList.remove('show'); }
+  function show(){ back.classList.add('show'); }
+  function el(tag, cls, text){ var n = document.createElement(tag); if(cls) n.className = cls; if(text != null) n.textContent = text; return n; }
+  function fmt(n){ try{ return Number(n).toLocaleString(); }catch(e){ return String(n); } }
+  function flag(cc){
+    if(!cc || cc === 'XX' || cc.length !== 2) return '🌐';
+    try{ return String.fromCodePoint(0x1F1E6 + cc.charCodeAt(0) - 65, 0x1F1E6 + cc.charCodeAt(1) - 65); }catch(e){ return ''; }
+  }
+
+  var myCountry = '', period = 'all', onlyMine = false;
+
+  /* ---------- leaderboard view ---------- */
+  function openBoard(startPeriod){
+    if(startPeriod) period = startPeriod;
+    renderBoard(); show(); loadBoard();
+  }
+  var listBox, scopeBtn;
+  function renderBoard(){
+    card.innerHTML = '';
+    card.appendChild(el('div', 'tlb-title', '🏆 Leaderboard'));
+    card.appendChild(el('div', 'tlb-sub', 'BEST SCORE PER PLAYER'));
+    var tabs = el('div', 'tlb-tabs');
+    [['day','Today'],['week','This week'],['all','All-time']].forEach(function(p){
+      var b = el('button', 'tlb-tab' + (period === p[0] ? ' on' : ''), p[1]);
+      b.onclick = function(){ period = p[0]; renderBoard(); loadBoard(); };
+      tabs.appendChild(b);
+    });
+    card.appendChild(tabs);
+    var sc = el('div', 'tlb-tabs');
+    var w = el('button', 'tlb-tab' + (!onlyMine ? ' on' : ''), '🌍 World');
+    w.onclick = function(){ onlyMine = false; renderBoard(); loadBoard(); };
+    scopeBtn = el('button', 'tlb-tab' + (onlyMine ? ' on' : ''), (myCountry ? flag(myCountry) + ' ' + myCountry : '📍 My country'));
+    scopeBtn.onclick = function(){ onlyMine = true; renderBoard(); loadBoard(); };
+    sc.appendChild(w); sc.appendChild(scopeBtn); card.appendChild(sc);
+    listBox = el('div', 'tlb-list'); listBox.appendChild(el('div', 'tlb-empty', 'Loading…'));
+    card.appendChild(listBox);
+    var row = el('div', 'tlb-row'); var cb = el('button', 'tlb-btn alt', 'Close'); cb.onclick = close; row.appendChild(cb); card.appendChild(row);
+  }
+  var reqSeq = 0;
+  function loadBoard(){
+    var my = ++reqSeq;
+    var q = 'game=' + encodeURIComponent(GAME) + '&period=' + period + '&limit=25&pid=' + encodeURIComponent(pid);
+    if(onlyMine && myCountry) q += '&country=' + myCountry;
+    fetch(API + '/api/top?' + q).then(function(r){ return r.json(); }).then(function(d){
+      if(my !== reqSeq) return;
+      if(d.error) throw new Error(d.error);
+      if(d.you_country && !myCountry){
+        myCountry = d.you_country;
+        if(scopeBtn && myCountry !== 'XX') scopeBtn.textContent = flag(myCountry) + ' ' + myCountry;
+      }
+      listBox.innerHTML = '';
+      if(!d.entries.length){ listBox.appendChild(el('div', 'tlb-empty', 'No scores here yet — be the first!')); return; }
+      var inList = false;
+      d.entries.forEach(function(e){
+        if(e.me) inList = true;
+        var li = el('div', 'tlb-li' + (e.me ? ' me' : ''));
+        li.appendChild(el('div', 'tlb-r', '#' + e.rank));
+        li.appendChild(el('div', 'tlb-n', e.name));
+        li.appendChild(el('div', 'tlb-c', flag(e.country) + ' ' + (e.country === 'XX' ? '' : e.country)));
+        li.appendChild(el('div', 'tlb-s', fmt(e.score)));
+        listBox.appendChild(li);
+      });
+      if(d.me && !inList){
+        listBox.appendChild(el('div', 'tlb-gap', '• • •'));
+        var li2 = el('div', 'tlb-li me');
+        li2.appendChild(el('div', 'tlb-r', '#' + d.me.rank));
+        li2.appendChild(el('div', 'tlb-n', 'You'));
+        li2.appendChild(el('div', 'tlb-c', ''));
+        li2.appendChild(el('div', 'tlb-s', fmt(d.me.score)));
+        listBox.appendChild(li2);
+      }
+    }).catch(function(){
+      if(my !== reqSeq) return;
+      listBox.innerHTML = '';
+      var m = el('div', 'tlb-empty', "Couldn't reach the leaderboard. Check your connection."); listBox.appendChild(m);
+    });
+  }
+
+  /* ---------- submit view ---------- */
+  function submitScore(score, secs){
+    score = Math.floor(Number(score)); secs = Number(secs);
+    if(!(score > 0)) return;
+    card.innerHTML = '';
+    card.appendChild(el('div', 'tlb-title', '🏆 Submit your score'));
+    card.appendChild(el('div', 'tlb-sub', 'JOIN THE WORLD RANKING'));
+    card.appendChild(el('div', 'tlb-score', fmt(score)));
+    var inp = el('input', 'tlb-in'); inp.type = 'text'; inp.maxLength = 16; inp.placeholder = 'Your nickname';
+    inp.value = lsGet(NAME_KEY); inp.setAttribute('autocomplete', 'nickname'); inp.setAttribute('enterkeyhint', 'send');
+    card.appendChild(inp);
+    var msg = el('div', 'tlb-msg', 'Only your nickname, score and country are stored.');
+    card.appendChild(msg);
+    var row = el('div', 'tlb-row');
+    var ok = el('button', 'tlb-btn', 'Submit'); var skip = el('button', 'tlb-btn alt', 'Skip');
+    row.appendChild(ok); row.appendChild(skip); card.appendChild(row);
+    skip.onclick = close;
+    function go(){
+      var name = inp.value.trim();
+      if(!name){ msg.className = 'tlb-msg err'; msg.textContent = 'Please type a nickname.'; inp.focus(); return; }
+      lsSet(NAME_KEY, name);
+      ok.disabled = true; msg.className = 'tlb-msg'; msg.textContent = 'Sending…';
+      fetch(API + '/api/score', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ game: GAME, pid: pid, name: name, score: score, secs: secs }) })
+      .then(function(r){ return r.json().then(function(d){ return { ok: r.ok, d: d }; }); })
+      .then(function(res){
+        if(!res.ok) throw new Error(res.d && res.d.error || 'error');
+        myCountry = res.d.country || myCountry; showResult(res.d, score);
+      }).catch(function(err){
+        ok.disabled = false; msg.className = 'tlb-msg err';
+        var m = String(err && err.message || '');
+        msg.textContent = m === 'implausible' || m === 'too_short' ? "That score couldn't be verified."
+          : m === 'rate_limited' ? 'Too many submissions — try again later.'
+          : "Couldn't reach the leaderboard. Tap Submit to retry.";
+      });
+    }
+    ok.onclick = go;
+    inp.addEventListener('keydown', function(e){ if(e.key === 'Enter') go(); });
+    show();
+    setTimeout(function(){ try{ inp.focus(); inp.select(); }catch(e){} }, 60);
+  }
+
+  function showResult(d, score){
+    card.innerHTML = '';
+    card.appendChild(el('div', 'tlb-title', '🎉 Score saved!'));
+    card.appendChild(el('div', 'tlb-sub', (d.name || '').toUpperCase()));
+    var rk = el('div', 'tlb-ranks');
+    function box(label, v){ if(!v) return; var b = el('div', 'tlb-rank'); b.appendChild(el('b', '', '#' + fmt(v))); b.appendChild(el('span', '', label)); rk.appendChild(b); }
+    box('Worldwide', d.ranks && d.ranks.all);
+    if(d.country && d.country !== 'XX') box(flag(d.country) + ' ' + d.country, d.ranks && d.ranks.country);
+    box('Today', d.ranks && d.ranks.day);
+    card.appendChild(rk);
+    if(d.best && d.best > score) card.appendChild(el('div', 'tlb-msg', 'Your personal best is ' + fmt(d.best) + '.'));
+    var row = el('div', 'tlb-row');
+    var v = el('button', 'tlb-btn', 'View leaderboard'); var c = el('button', 'tlb-btn alt', 'Close');
+    v.onclick = function(){ openBoard('all'); }; c.onclick = close;
+    row.appendChild(v); row.appendChild(c); card.appendChild(row);
+  }
+
+  T.submit = submitScore;
+  T.open = openBoard;
+})();
+
+</script><!--/LB-WIDGET-->
+<script>
+(function(){
+  const SIZE = 4;
+  const $ = id=>document.getElementById(id);
+  const tilesEl = $('tiles'), gridEl = $('grid'), scoreEl = $('score'), bestEl = $('best');
+  const overlay = $('overlay'), boardWrap = $('boardWrap'), chainEl = $('chain');
+  const BEST_KEY = 'teafusion_best';
+
+  const CHAIN = [
+    { v:2,    emoji:'🍵', color:'#eaf3ff' },
+    { v:4,    emoji:'🥟', color:'#dcefff' },
+    { v:8,    emoji:'🍡', color:'#ffe3b0' },
+    { v:16,   emoji:'🍙', color:'#ffd18a' },
+    { v:32,   emoji:'🍢', color:'#ffb87a' },
+    { v:64,   emoji:'🌭', color:'#ff9f6b' },
+    { v:128,  emoji:'🍕', color:'#ff8a65' },
+    { v:256,  emoji:'🍔', color:'#ff7a5c' },
+    { v:512,  emoji:'🍰', color:'#ff6f61' },
+    { v:1024, emoji:'👑', color:'#ffd54d' },
+    { v:2048, emoji:'🏆', color:'#ffc107' },
+    { v:4096, emoji:'🎉', color:'#ff9a3d' },
+  ];
+  const tileInfo = v=> CHAIN.find(c=>c.v===v) || CHAIN[CHAIN.length-1];
+
+  let tiles = [], nextId = 1, score = 0, best = 0, state = 'menu', history = [], busy = false, won = false;
+  let runStart = 0;
+  let cell = 0, gap = 8, pad = 8;
+
+  function measure(){
+    const w = gridEl.getBoundingClientRect().width;
+    cell = (w - pad*2 - gap*(SIZE-1)) / SIZE;
+  }
+  function pos(r,c){ return { left: pad + c*(cell+gap), top: pad + r*(cell+gap) }; }
+
+  function paint(t){
+    const info = tileInfo(t.v);
+    t.el.style.background = info.color;
+    t.el.style.fontSize = Math.max(14, cell*0.42)+'px';
+    t.el.innerHTML = `<div class="emo">${info.emoji}</div><div class="val">${t.v}</div>`;
+  }
+  function place(t){
+    const p = pos(t.r,t.c);
+    t.el.style.width = cell+'px'; t.el.style.height = cell+'px';
+    t.el.style.left = p.left+'px'; t.el.style.top = p.top+'px';
+  }
+  function makeTile(v,r,c,pop){
+    const el = document.createElement('div'); el.className = 'tile';
+    const t = { id:nextId++, v, r, c, el };
+    paint(t); place(t);
+    if(pop) el.classList.add('newpop');
+    tilesEl.appendChild(el); tiles.push(t);
+    return t;
+  }
+  function clearTiles(){ tiles.forEach(t=>t.el.remove()); tiles = []; }
+
+  function buildBg(){
+    gridEl.innerHTML = '';
+    for(let i=0;i<SIZE*SIZE;i++){ const d = document.createElement('div'); d.className = 'cellbg'; gridEl.appendChild(d); }
+  }
+
+  function buildChain(){
+    chainEl.innerHTML = '';
+    CHAIN.forEach((c,i)=>{
+      if(i>0){ const a = document.createElement('span'); a.className = 'arrow'; a.textContent = '›'; chainEl.appendChild(a); }
+      const s = document.createElement('span'); s.className = 'step'; s.textContent = c.emoji; s.title = c.v; s.dataset.v = c.v;
+      chainEl.appendChild(s);
+    });
+  }
+  function updateChain(){
+    let top = 0; tiles.forEach(t=>{ if(t.v>top) top = t.v; });
+    chainEl.querySelectorAll('.step').forEach(s=>{
+      const v = +s.dataset.v;
+      s.classList.toggle('reached', v<=Math.max(top, +chainEl.dataset.max||0));
+      s.classList.toggle('top', v===top);
+    });
+    chainEl.dataset.max = Math.max(top, +chainEl.dataset.max||0);
+  }
+
+  function emptyCells(){
+    const occ = new Set(tiles.map(t=>t.r*SIZE+t.c));
+    const out = [];
+    for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++) if(!occ.has(r*SIZE+c)) out.push([r,c]);
+    return out;
+  }
+  function spawn(){
+    const e = emptyCells(); if(!e.length) return;
+    const [r,c] = e[Math.floor(Math.random()*e.length)];
+    makeTile(Math.random()<0.88?2:4, r, c, true);
+  }
+
+  function snapshot(){ return { tiles: tiles.map(t=>({v:t.v,r:t.r,c:t.c})), score }; }
+  function restore(s){
+    clearTiles(); s.tiles.forEach(t=>makeTile(t.v,t.r,t.c,false));
+    score = s.score; scoreEl.textContent = score; updateChain();
+  }
+  function undo(){
+    if(state!=='playing' || busy || !history.length) return;
+    restore(history.pop());
+  }
+
+  function canMove(){
+    if(emptyCells().length) return true;
+    const g = Array.from({length:SIZE},()=>Array(SIZE).fill(0));
+    tiles.forEach(t=>g[t.r][t.c]=t.v);
+    for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++){
+      if(c<SIZE-1 && g[r][c]===g[r][c+1]) return true;
+      if(r<SIZE-1 && g[r][c]===g[r+1][c]) return true;
+    }
+    return false;
+  }
+
+  function move(dir){
+    if(state!=='playing' || busy || overlay.classList.contains('show')) return;
+    const before = snapshot();
+    const grid = Array.from({length:SIZE},()=>Array(SIZE).fill(null));
+    tiles.forEach(t=>grid[t.r][t.c]=t);
+    let moved = false, gain = 0;
+    const removed = [], merged = [];
+
+    for(let i=0;i<SIZE;i++){
+      const coords = [];
+      for(let j=0;j<SIZE;j++){
+        let r,c;
+        if(dir==='left'){ r=i; c=j; }
+        else if(dir==='right'){ r=i; c=SIZE-1-j; }
+        else if(dir==='up'){ r=j; c=i; }
+        else { r=SIZE-1-j; c=i; }
+        coords.push([r,c]);
+      }
+      const line = coords.map(([r,c])=>grid[r][c]).filter(Boolean);
+      let p = 0;
+      for(let k=0;k<line.length;k++){
+        const t = line[k], nxt = line[k+1];
+        const [tr,tc] = coords[p];
+        if(nxt && nxt.v===t.v){
+          t.r = tr; t.c = tc; nxt.r = tr; nxt.c = tc;
+          removed.push(nxt); t.v *= 2; gain += t.v; merged.push(t);
+          moved = true; k++;
+        } else {
+          if(t.r!==tr || t.c!==tc) moved = true;
+          t.r = tr; t.c = tc;
+        }
+        p++;
+      }
+    }
+    if(!moved) return;
+
+    busy = true;
+    history.push(before); if(history.length>12) history.shift();
+    tiles = tiles.filter(t=>!removed.includes(t));
+    [...tiles, ...removed].forEach(place);
+    score += gain; scoreEl.textContent = score;
+    if(score>best){ best = score; bestEl.textContent = best; try{ localStorage.setItem(BEST_KEY,best); }catch(e){} }
+
+    setTimeout(()=>{
+      removed.forEach(t=>t.el.remove());
+      merged.forEach(t=>{ paint(t); t.el.classList.remove('mergepop'); void t.el.offsetWidth; t.el.classList.add('mergepop'); });
+      spawn(); updateChain(); busy = false;
+      checkEnd();
+    }, 125);
+  }
+
+  function checkEnd(){
+    if(!won && tiles.some(t=>t.v>=2048)){ won = true; showWin(); return; }
+    if(!canMove()) showLose();
+  }
+
+  const demoHtml = `<div class="demo"><span class="box">🍵</span><span class="plus">+</span><span class="box">🍵</span><span class="eq">=</span><span class="box">🥟</span></div>`;
+  function showHelp(first){
+    overlay.innerHTML = `<h1>🍜 Tea Fusion</h1>${demoHtml}
+      <ul class="howto">
+        <li><b>1</b><span><b style="min-width:0">Swipe</b> (or press arrow keys / WASD) — every tile slides as far as it can.</span></li>
+        <li><b>2</b><span>Two <b style="min-width:0">identical foods</b> that bump into each other <b style="min-width:0">fuse into the next dish</b>.</span></li>
+        <li><b>3</b><span>A new tile appears after every move. Don't let the board fill up!</span></li>
+        <li><b>4</b><span>Reach the 🏆 <b style="min-width:0">2048 Feast</b> tile to win. The chain under the board shows your progress.</span></li>
+      </ul>
+      <div class="btnrow"><button class="btn" id="helpGo">${first?'Start Game':'Got it'}</button></div>`;
+    overlay.classList.add('show');
+    $('helpGo').onclick = ()=>{ overlay.classList.remove('show'); if(first) startGame(); };
+    if(!first && state==='menu') state = 'menu';
+  }
+  function showWin(){
+    overlay.innerHTML = `<h1>🏆 Legendary Feast!</h1>
+      <div class="sub">You fused your way to the top dish!<br>Score: <b>${score}</b></div>
+      <div class="btnrow"><button class="btn" id="keepBtn">Keep Going</button><button class="btn alt" id="subBtn" style="display:none">🏆 Submit</button><button class="btn alt" id="againBtn">New Game</button></div>`;
+    overlay.classList.add('show');
+    $('keepBtn').onclick = ()=> overlay.classList.remove('show');
+    $('againBtn').onclick = startGame;
+    if(window.TeaLB && TeaLB.enabled){
+      const sb = $('subBtn'); sb.style.display = '';
+      sb.onclick = ()=> TeaLB.submit(score, (performance.now()-runStart)/1000);
+    }
+  }
+  function showLose(){
+    state = 'over';
+    overlay.innerHTML = `<h1>🍽️ Table's Full!</h1>
+      <div class="sub">No more moves left.</div>
+      <div class="stat">Score: ${score}</div><div class="sub">Best: ${best}</div>
+      <div class="btnrow"><button class="btn" id="againBtn">Play Again</button></div>`;
+    overlay.classList.add('show');
+    $('againBtn').onclick = startGame;
+    if(window.TeaLB && TeaLB.enabled){
+      const rb = document.createElement('button'); rb.className = 'btn alt'; rb.textContent = '🏆 Ranks';
+      overlay.querySelector('.btnrow').appendChild(rb); rb.onclick = ()=>TeaLB.open();
+      setTimeout(()=>{ if(state==='over' && score>0) TeaLB.submit(score, (performance.now()-runStart)/1000); }, 700);
+    }
+  }
+
+  function startGame(){
+    overlay.classList.remove('show');
+    clearTiles(); score = 0; scoreEl.textContent = 0; history = []; won = false; busy = false;
+    chainEl.dataset.max = 0; state = 'playing'; runStart = performance.now();
+    measure(); spawn(); spawn(); updateChain();
+    try{ localStorage.setItem('teafusion_seen','1'); }catch(e){}
+  }
+
+  /* input */
+  window.addEventListener('keydown', e=>{
+    const map = { ArrowLeft:'left', ArrowRight:'right', ArrowUp:'up', ArrowDown:'down', a:'left', d:'right', w:'up', s:'down' };
+    if(map[e.key]){ e.preventDefault(); move(map[e.key]); }
+  });
+  let sx=0, sy=0, touching=false;
+  boardWrap.addEventListener('touchstart', e=>{ touching = true; sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, {passive:true});
+  boardWrap.addEventListener('touchmove', e=>{ e.preventDefault(); }, {passive:false});
+  boardWrap.addEventListener('touchend', e=>{
+    if(!touching) return; touching = false;
+    const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
+    if(Math.max(Math.abs(dx),Math.abs(dy)) < 22) return;
+    if(Math.abs(dx)>Math.abs(dy)) move(dx>0?'right':'left'); else move(dy>0?'down':'up');
+  }, {passive:true});
+  // mouse swipe for desktop
+  let mx=0,my=0,mdown=false;
+  boardWrap.addEventListener('mousedown', e=>{ mdown=true; mx=e.clientX; my=e.clientY; });
+  window.addEventListener('mouseup', e=>{
+    if(!mdown) return; mdown=false;
+    const dx=e.clientX-mx, dy=e.clientY-my;
+    if(Math.max(Math.abs(dx),Math.abs(dy))<30) return;
+    if(Math.abs(dx)>Math.abs(dy)) move(dx>0?'right':'left'); else move(dy>0?'down':'up');
+  });
+
+  window.addEventListener('resize', ()=>{ measure(); tiles.forEach(t=>{ paint(t); place(t); }); });
+  $('newGameBtn').onclick = startGame;
+  $('undoBtn').onclick = undo;
+  $('helpBtn').onclick = ()=> showHelp(false);
+  if(window.TeaLB && TeaLB.enabled){ const lb = $('lbBtn'); lb.style.display = ''; lb.onclick = ()=>TeaLB.open(); }
+
+  try{ best = parseInt(localStorage.getItem(BEST_KEY)||'0'); }catch(e){}
+  bestEl.textContent = best;
+  buildBg(); buildChain(); measure();
+  showHelp(true);
+
+  window.__tf = { move, tiles:()=>tiles.map(t=>({v:t.v,r:t.r,c:t.c})), get state(){return state;}, get score(){return score;},
+    setBoard(list){ clearTiles(); list.forEach(([v,r,c])=>makeTile(v,r,c,false)); updateChain(); state='playing'; overlay.classList.remove('show'); } };
+})();
+</script>
+</body>
+</html>
