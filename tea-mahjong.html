@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Tea Mahjong — We Eat Tea</title>
+<style>
+:root{--bg:#10231c;--panel:#1a3a2e;--ink:#f3f7ef;--dim:#a9c7b6;--gold:#ffd24d}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+html,body{margin:0;height:100%;background:radial-gradient(circle at 50% 30%,#1b4a39,#0b1a14);color:var(--ink);font-family:system-ui,-apple-system,sans-serif;overflow:hidden;touch-action:none}
+#app{height:100%;display:flex;flex-direction:column;padding:8px;gap:8px}
+#top{display:flex;gap:8px;align-items:stretch}
+.box{flex:1;background:var(--panel);border-radius:12px;padding:5px 8px;text-align:center}
+.box small{display:block;font-size:10px;letter-spacing:1.5px;color:var(--dim)}
+.box b{font-size:19px;color:var(--gold)}
+#stage{flex:1;min-height:0;position:relative}
+canvas{position:absolute;inset:0;width:100%;height:100%}
+#bottom{display:flex;gap:8px;justify-content:center}
+.btn{font:inherit;font-weight:800;font-size:15px;border:0;border-radius:14px;padding:11px 18px;background:linear-gradient(#ffd24d,#ff9a3d);color:#2b1704;cursor:pointer;box-shadow:0 4px 0 #b8651b}
+.btn.alt{background:#2c5a47;color:#fff;box-shadow:0 4px 0 #173528}
+.btn:active{transform:translateY(2px)}
+.btn:disabled{opacity:.45}
+#msg{text-align:center;font-size:13px;color:var(--dim);height:16px}
+#overlay{position:fixed;inset:0;background:rgba(5,16,11,.9);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:20px;z-index:5}
+#overlay.hide{display:none}
+#overlay h1{margin:0;font-size:32px}
+.sub{color:var(--dim);max-width:340px;font-size:14px;line-height:1.45}
+.stat{font-size:34px;font-weight:900;color:var(--gold)}
+.row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+</style><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#1c120b"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+</head><body>
+<div id="app">
+  <div id="top">
+    <div class="box"><small>SCORE</small><b id="score">0</b></div>
+    <div class="box"><small>TIME</small><b id="time">0:00</b></div>
+    <div class="box"><small>PAIRS LEFT</small><b id="left">48</b></div>
+    <button class="btn alt" id="lbBtn" style="display:none;padding:0 12px;font-size:20px">🏆</button>
+  </div>
+  <div id="stage"><canvas id="cv"></canvas></div>
+  <div id="msg"></div>
+  <div id="bottom">
+    <button class="btn alt" id="hintBtn">💡 Hint</button>
+    <button class="btn alt" id="shufBtn">🔀 Shuffle (3)</button>
+    <button class="btn alt" id="newBtn">New</button>
+  </div>
+</div>
+<div id="overlay">
+  <h1>🀄 Tea Mahjong</h1>
+  <div class="sub">Clear the board by tapping matching pairs. A tile is free when nothing is on top and its left or right side is open. Faster wins score more!</div>
+  <div class="row"><button class="btn" id="playBtn">Play</button></div>
+  <div class="row" id="extra"></div>
+</div>
+
+<script src="support.js"></script>
+<script>
+/* Tea Games photo sprites — shared by every game and by the Photo Studio.
+   Reads 12 photo slots from this browser (IndexedDB), or from a teapack.json file
+   placed next to the games (use that one when bundling the games into a store app).
+   Any slot with no photo falls back to the normal emoji, so the games never break. */
+(function(){
+  var DB = 'tea-sprites', STORE = 'pack', N = 12;
+  var imgs = {}, maps = {}, cbs = [], isReady = false;
+  var S = window.TeaSprites = {
+    N: N,
+    ready: false,
+    map: function(o){ for(var k in o) maps[k] = o[k]; },
+    img: function(slot){ return imgs[slot] || null; },
+    forEmoji: function(e){ var i = maps[e]; return (i == null) ? null : (imgs[i] || null); },
+    onReady: function(cb){ if(isReady) cb(); else cbs.push(cb); }
+  };
+  function done(){ isReady = true; S.ready = true; var a = cbs; cbs = []; a.forEach(function(f){ try{ f(); }catch(e){} }); }
+
+  function openDB(){
+    return new Promise(function(res, rej){
+      if(!window.indexedDB) return rej(new Error('no idb'));
+      var r = indexedDB.open(DB, 1);
+      r.onupgradeneeded = function(){ r.result.createObjectStore(STORE, { keyPath: 'id' }); };
+      r.onsuccess = function(){ res(r.result); };
+      r.onerror = function(){ rej(r.error); };
+    });
+  }
+  function readAll(){
+    return openDB().then(function(db){
+      return new Promise(function(res, rej){
+        var q = db.transaction(STORE).objectStore(STORE).getAll();
+        q.onsuccess = function(){ res(q.result || []); };
+        q.onerror = function(){ rej(q.error); };
+      });
+    });
+  }
+  function fromPack(){
+    /* optional bundled file; the service worker keeps a copy so it also works offline */
+    return fetch('teapack.json').then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){ return (j && j.slots) ? j.slots.map(function(s){ return { id: s.id, data: s.data }; }) : []; })
+      .catch(function(){ return []; });
+  }
+  function load(item){
+    return new Promise(function(res){
+      if(!item || !item.data) return res();
+      var im = new Image();
+      im.onload = function(){ imgs[item.id] = im; res(); };
+      im.onerror = function(){ res(); };
+      im.src = item.data;
+    });
+  }
+  Promise.all([ readAll().catch(function(){ return []; }), fromPack() ]).then(function(r){
+    var byId = {};
+    r[1].forEach(function(x){ byId[x.id] = x; });   /* bundled pack first … */
+    r[0].forEach(function(x){ byId[x.id] = x; });   /* … the player's own photos win */
+    return Promise.all(Object.keys(byId).map(function(k){ return load(byId[k]); }));
+  }).then(done, done);
+})();
+
+</script>
+<script>window.TEA_LB_API = 'https://tea-leaderboard.usoemoe.workers.dev'; window.TEA_LB_GAME = 'tea-mahjong';</script>
+<!--LB-WIDGET--><script>
+/* Tea Games leaderboard widget — shared by every game.
+   Needs window.TEA_LB_API (Worker URL) and window.TEA_LB_GAME set before this runs.
+   With no API URL it does nothing, so games work fine without a backend. */
+(function(){
+  var API = String(window.TEA_LB_API || '').replace(/\/+$/, '');
+  var GAME = String(window.TEA_LB_GAME || '');
+  var enabled = !!API && !!GAME;
+  var T = window.TeaLB = { enabled: enabled, submit: function(){}, open: function(){} };
+  if(!enabled) return;
+
+  var PID_KEY = 'tealb_pid', NAME_KEY = 'tealb_name';
+  function lsGet(k){ try{ return localStorage.getItem(k) || ''; }catch(e){ return ''; } }
+  function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+  var pid = lsGet(PID_KEY);
+  if(!pid){
+    pid = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+        : (Date.now().toString(36) + Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 8));
+    lsSet(PID_KEY, pid);
+  }
+
+  /* ---------- offline queue: scores played with no signal are sent later ---------- */
+  var Q_KEY = 'tealb_queue';
+  function qGet(){ try{ var a = JSON.parse(lsGet(Q_KEY) || '[]'); return Array.isArray(a) ? a : []; }catch(e){ return []; } }
+  function qPut(a){ lsSet(Q_KEY, JSON.stringify(a.slice(-30))); }
+  function qAdd(item){
+    var a = qGet(); a.push(item);
+    /* keep only the best 3 per game so a long offline session can't flood the server */
+    var by = {}; a.forEach(function(x){ (by[x.game] = by[x.game] || []).push(x); });
+    var out = []; Object.keys(by).forEach(function(g){ by[g].sort(function(x, y){ return y.score - x.score; }); out = out.concat(by[g].slice(0, 3)); });
+    qPut(out);
+  }
+  var flushing = false;
+  function flushQueue(){
+    if(flushing) return; var a = qGet(); if(!a.length) return;
+    flushing = true;
+    var keep = [];
+    (function next(i){
+      if(i >= a.length){ qPut(keep); flushing = false; return; }
+      var it = a[i];
+      fetch(API + '/api/score', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ game: it.game, pid: pid, name: it.name, score: it.score, secs: it.secs }) })
+      .then(function(){ next(i + 1); })          /* accepted or rejected by the server: either way, done with it */
+      .catch(function(){ keep = keep.concat(a.slice(i)); qPut(keep); flushing = false; });  /* still offline: try again later */
+    })(0);
+  }
+  window.addEventListener('online', flushQueue);
+  setTimeout(flushQueue, 1500);
+
+  var css = '\
+.tlb-back{position:fixed;inset:0;z-index:99999;display:none;align-items:center;justify-content:center;padding:14px;background:rgba(5,8,18,.8);font-family:"Segoe UI",system-ui,sans-serif;-webkit-tap-highlight-color:transparent}\
+.tlb-back.show{display:flex}\
+.tlb-card{width:min(94vw,440px);max-height:92vh;overflow:auto;background:linear-gradient(160deg,#25335e,#161d3a);border:2px solid #ffcf4d;border-radius:18px;padding:18px 16px 16px;color:#e8eefc;box-shadow:0 0 50px rgba(255,207,77,.25);text-align:center}\
+.tlb-card *{box-sizing:border-box;user-select:text}\
+.tlb-title{font-size:20px;font-weight:900;color:#ffcf4d;margin-bottom:4px}\
+.tlb-sub{font-size:12px;color:#9fb0d8;margin-bottom:10px;letter-spacing:1px}\
+.tlb-score{font-size:36px;font-weight:900;color:#fff;margin:2px 0 10px}\
+.tlb-in{width:100%;padding:11px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:#0f1630;color:#fff;font-size:16px;text-align:center;outline:none}\
+.tlb-in:focus{border-color:#ffcf4d}\
+.tlb-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:12px}\
+.tlb-btn{background:linear-gradient(#ffae52,#e8722a);color:#fff;border:none;font-weight:800;font-size:14px;padding:10px 20px;border-radius:22px;cursor:pointer;box-shadow:0 4px 0 #a84e14}\
+.tlb-btn:active{transform:translateY(3px);box-shadow:0 1px 0 #a84e14}\
+.tlb-btn.alt{background:linear-gradient(#6b7bb0,#46557f);box-shadow:0 4px 0 #2a3558}\
+.tlb-btn:disabled{opacity:.5}\
+.tlb-msg{min-height:20px;margin-top:10px;font-size:13px;color:#9fb0d8}\
+.tlb-msg.err{color:#ff8a8a}\
+.tlb-ranks{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:6px 0 2px}\
+.tlb-rank{background:rgba(255,255,255,.08);border-radius:12px;padding:8px 12px;min-width:92px}\
+.tlb-rank b{display:block;font-size:22px;color:#ffcf4d}\
+.tlb-rank span{font-size:11px;color:#9fb0d8}\
+.tlb-tabs{display:flex;gap:6px;justify-content:center;margin:8px 0}\
+.tlb-tab{flex:1;background:rgba(255,255,255,.08);color:#c9d3ea;border:none;border-radius:16px;padding:7px 4px;font-size:13px;font-weight:700;cursor:pointer}\
+.tlb-tab.on{background:#ffcf4d;color:#1a1a2e}\
+.tlb-list{margin:8px 0 0;text-align:left}\
+.tlb-li{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:10px;font-size:14px}\
+.tlb-li:nth-child(odd){background:rgba(255,255,255,.04)}\
+.tlb-li.me{background:rgba(255,207,77,.2);outline:1px solid #ffcf4d}\
+.tlb-r{width:34px;text-align:center;font-weight:900;color:#9fb0d8}\
+.tlb-li:nth-child(1) .tlb-r{color:#ffd54d;font-size:17px}.tlb-li:nth-child(2) .tlb-r{color:#d8dde8;font-size:16px}.tlb-li:nth-child(3) .tlb-r{color:#e0955a;font-size:16px}\
+.tlb-n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\
+.tlb-c{font-size:11px;color:#9fb0d8;white-space:nowrap}\
+.tlb-s{font-weight:800;color:#ffcf4d;font-variant-numeric:tabular-nums}\
+.tlb-gap{text-align:center;color:#6f7fa8;font-size:12px;padding:2px}\
+.tlb-empty{padding:18px 8px;color:#9fb0d8;font-size:13px;text-align:center}';
+  var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+
+  var back = document.createElement('div'); back.className = 'tlb-back';
+  var card = document.createElement('div'); card.className = 'tlb-card';
+  back.appendChild(card); document.body.appendChild(back);
+  // keep typing in the box from triggering game controls
+  ['keydown','keyup','keypress'].forEach(function(ev){ back.addEventListener(ev, function(e){ if(e.key !== 'Escape') e.stopPropagation(); }); });
+  back.addEventListener('click', function(e){ if(e.target === back) close(); });
+  window.addEventListener('keydown', function(e){ if(e.key === 'Escape' && back.classList.contains('show')) close(); });
+
+  function close(){ back.classList.remove('show'); }
+  function show(){ back.classList.add('show'); }
+  function el(tag, cls, text){ var n = document.createElement(tag); if(cls) n.className = cls; if(text != null) n.textContent = text; return n; }
+  function fmt(n){ try{ return Number(n).toLocaleString(); }catch(e){ return String(n); } }
+  function flag(cc){
+    if(!cc || cc === 'XX' || cc.length !== 2) return '🌐';
+    try{ return String.fromCodePoint(0x1F1E6 + cc.charCodeAt(0) - 65, 0x1F1E6 + cc.charCodeAt(1) - 65); }catch(e){ return ''; }
+  }
+
+  var myCountry = '', period = 'all', onlyMine = false;
+
+  /* ---------- leaderboard view ---------- */
+  function openBoard(startPeriod){
+    if(startPeriod) period = startPeriod;
+    renderBoard(); show(); loadBoard();
+  }
+  var listBox, scopeBtn;
+  function renderBoard(){
+    card.innerHTML = '';
+    card.appendChild(el('div', 'tlb-title', '🏆 Leaderboard'));
+    card.appendChild(el('div', 'tlb-sub', 'BEST SCORE PER PLAYER'));
+    var tabs = el('div', 'tlb-tabs');
+    [['day','Today'],['week','This week'],['all','All-time']].forEach(function(p){
+      var b = el('button', 'tlb-tab' + (period === p[0] ? ' on' : ''), p[1]);
+      b.onclick = function(){ period = p[0]; renderBoard(); loadBoard(); };
+      tabs.appendChild(b);
+    });
+    card.appendChild(tabs);
+    var sc = el('div', 'tlb-tabs');
+    var w = el('button', 'tlb-tab' + (!onlyMine ? ' on' : ''), '🌍 World');
+    w.onclick = function(){ onlyMine = false; renderBoard(); loadBoard(); };
+    scopeBtn = el('button', 'tlb-tab' + (onlyMine ? ' on' : ''), (myCountry ? flag(myCountry) + ' ' + myCountry : '📍 My country'));
+    scopeBtn.onclick = function(){ onlyMine = true; renderBoard(); loadBoard(); };
+    sc.appendChild(w); sc.appendChild(scopeBtn); card.appendChild(sc);
+    listBox = el('div', 'tlb-list'); listBox.appendChild(el('div', 'tlb-empty', 'Loading…'));
+    card.appendChild(listBox);
+    var row = el('div', 'tlb-row'); var cb = el('button', 'tlb-btn alt', 'Close'); cb.onclick = close; row.appendChild(cb); card.appendChild(row);
+  }
+  var reqSeq = 0;
+  function loadBoard(){
+    var my = ++reqSeq;
+    var q = 'game=' + encodeURIComponent(GAME) + '&period=' + period + '&limit=25&pid=' + encodeURIComponent(pid);
+    if(onlyMine && myCountry) q += '&country=' + myCountry;
+    var ckey = 'tealb_cache_' + GAME + '_' + period + '_' + (onlyMine ? 'c' : 'w');
+    function drawEntries(d, stale){
+      if(my !== reqSeq) return;
+      if(d.you_country && !myCountry){
+        myCountry = d.you_country;
+        if(scopeBtn && myCountry !== 'XX') scopeBtn.textContent = flag(myCountry) + ' ' + myCountry;
+      }
+      listBox.innerHTML = '';
+      if(stale) listBox.appendChild(el('div', 'tlb-empty', 'Offline — showing the last saved board.'));
+      if(!d.entries.length){ listBox.appendChild(el('div', 'tlb-empty', 'No scores here yet — be the first!')); return; }
+      var inList = false;
+      d.entries.forEach(function(e){
+        if(e.me) inList = true;
+        var li = el('div', 'tlb-li' + (e.me ? ' me' : ''));
+        li.appendChild(el('div', 'tlb-r', '#' + e.rank));
+        li.appendChild(el('div', 'tlb-n', e.name));
+        li.appendChild(el('div', 'tlb-c', flag(e.country) + ' ' + (e.country === 'XX' ? '' : e.country)));
+        li.appendChild(el('div', 'tlb-s', fmt(e.score)));
+        listBox.appendChild(li);
+      });
+      if(d.me && !inList){
+        listBox.appendChild(el('div', 'tlb-gap', '• • •'));
+        var li2 = el('div', 'tlb-li me');
+        li2.appendChild(el('div', 'tlb-r', '#' + d.me.rank));
+        li2.appendChild(el('div', 'tlb-n', 'You'));
+        li2.appendChild(el('div', 'tlb-c', ''));
+        li2.appendChild(el('div', 'tlb-s', fmt(d.me.score)));
+        listBox.appendChild(li2);
+      }
+    }
+    fetch(API + '/api/top?' + q).then(function(r){ return r.json(); }).then(function(d){
+      if(my !== reqSeq) return;
+      if(d.error) throw new Error(d.error);
+      lsSet(ckey, JSON.stringify(d));
+      drawEntries(d, false);
+    }).catch(function(){
+      if(my !== reqSeq) return;
+      var c = null; try{ c = JSON.parse(lsGet(ckey) || 'null'); }catch(e){}
+      if(c && c.entries){ drawEntries(c, true); return; }
+      listBox.innerHTML = '';
+      var m = el('div', 'tlb-empty', "Couldn't reach the leaderboard. Check your connection."); listBox.appendChild(m);
+    });
+  }
+
+  /* ---------- submit view ---------- */
+  function submitScore(score, secs){
+    score = Math.floor(Number(score)); secs = Number(secs);
+    if(!(score > 0)) return;
+    card.innerHTML = '';
+    card.appendChild(el('div', 'tlb-title', '🏆 Submit your score'));
+    card.appendChild(el('div', 'tlb-sub', 'JOIN THE WORLD RANKING'));
+    card.appendChild(el('div', 'tlb-score', fmt(score)));
+    var inp = el('input', 'tlb-in'); inp.type = 'text'; inp.maxLength = 16; inp.placeholder = 'Your nickname';
+    inp.value = lsGet(NAME_KEY); inp.setAttribute('autocomplete', 'nickname'); inp.setAttribute('enterkeyhint', 'send');
+    card.appendChild(inp);
+    var msg = el('div', 'tlb-msg', 'Only your nickname, score and country are stored.');
+    card.appendChild(msg);
+    var row = el('div', 'tlb-row');
+    var ok = el('button', 'tlb-btn', 'Submit'); var skip = el('button', 'tlb-btn alt', 'Skip');
+    row.appendChild(ok); row.appendChild(skip); card.appendChild(row);
+    skip.onclick = close;
+    function go(){
+      var name = inp.value.trim();
+      if(!name){ msg.className = 'tlb-msg err'; msg.textContent = 'Please type a nickname.'; inp.focus(); return; }
+      lsSet(NAME_KEY, name);
+      ok.disabled = true; msg.className = 'tlb-msg'; msg.textContent = 'Sending…';
+      fetch(API + '/api/score', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ game: GAME, pid: pid, name: name, score: score, secs: secs }) })
+      .then(function(r){ return r.json().then(function(d){ return { ok: r.ok, d: d }; }); })
+      .then(function(res){
+        if(!res.ok) throw new Error(res.d && res.d.error || 'error');
+        myCountry = res.d.country || myCountry; showResult(res.d, score);
+      }).catch(function(err){
+        var m = String(err && err.message || '');
+        /* a failed fetch() is a TypeError; replies from the server arrive as plain Errors */
+        if(navigator.onLine === false || err instanceof TypeError){
+          qAdd({ game: GAME, name: name, score: score, secs: secs, t: Date.now() });
+          card.innerHTML = '';
+          card.appendChild(el('div', 'tlb-title', '📴 Saved offline'));
+          card.appendChild(el('div', 'tlb-sub', name.toUpperCase()));
+          card.appendChild(el('div', 'tlb-score', fmt(score)));
+          card.appendChild(el('div', 'tlb-msg', "No connection right now. Your score will be sent automatically when you're back online."));
+          var r2 = el('div', 'tlb-row'); var c2 = el('button', 'tlb-btn', 'OK'); c2.onclick = close; r2.appendChild(c2); card.appendChild(r2);
+          return;
+        }
+        ok.disabled = false; msg.className = 'tlb-msg err';
+        msg.textContent = m === 'implausible' || m === 'too_short' ? "That score couldn't be verified."
+          : m === 'rate_limited' ? 'Too many submissions — try again later.'
+          : "Couldn't reach the leaderboard. Tap Submit to retry.";
+      });
+    }
+    ok.onclick = go;
+    inp.addEventListener('keydown', function(e){ if(e.key === 'Enter') go(); });
+    show();
+    setTimeout(function(){ try{ inp.focus(); inp.select(); }catch(e){} }, 60);
+  }
+
+  function showResult(d, score){
+    card.innerHTML = '';
+    card.appendChild(el('div', 'tlb-title', '🎉 Score saved!'));
+    card.appendChild(el('div', 'tlb-sub', (d.name || '').toUpperCase()));
+    var rk = el('div', 'tlb-ranks');
+    function box(label, v){ if(!v) return; var b = el('div', 'tlb-rank'); b.appendChild(el('b', '', '#' + fmt(v))); b.appendChild(el('span', '', label)); rk.appendChild(b); }
+    box('Worldwide', d.ranks && d.ranks.all);
+    if(d.country && d.country !== 'XX') box(flag(d.country) + ' ' + d.country, d.ranks && d.ranks.country);
+    box('Today', d.ranks && d.ranks.day);
+    card.appendChild(rk);
+    if(d.best && d.best > score) card.appendChild(el('div', 'tlb-msg', 'Your personal best is ' + fmt(d.best) + '.'));
+    var row = el('div', 'tlb-row');
+    var v = el('button', 'tlb-btn', 'View leaderboard'); var c = el('button', 'tlb-btn alt', 'Close');
+    v.onclick = function(){ openBoard('all'); }; c.onclick = close;
+    row.appendChild(v); row.appendChild(c); card.appendChild(row);
+  }
+
+  T.submit = submitScore;
+  T.open = openBoard;
+})();
+
+</script><!--/LB-WIDGET-->
+
+<script>
+(function(){
+  const FACES = ['🍜','🥟','🍵','🍢','🌶️','🥭','🍚','🍛','🥘','🍲','🍤','🍗','🍣','🍱','🥠','🍡','🍙','🥮','🍉','🍋','🥥','🍌','🍍','🍇'];
+  const TINTS = ['#c0392b','#2e7d32','#1565c0','#6a1b9a','#ef6c00','#00838f'];
+  const $ = id=>document.getElementById(id);
+  const cv = $('cv'), ctx = cv.getContext('2d'), stage = $('stage');
+  const BEST_KEY = 'teamahjong_best';
+  let dpr = 1, W = 300, H = 400, U = 10, VU = 13, DZ = 4, OX = 0, OY = 0;
+
+  /* ---------- layout: 3 layers, 96 tiles (positions in half-tile units) ---------- */
+  function layout(){
+    const out = [];
+    for(let y=0;y<=10;y+=2) for(let x=0;x<=18;x+=2) out.push({x,y,z:0});
+    for(const y of [3,5,7]) for(let x=2;x<=16;x+=2) out.push({x,y,z:1});
+    for(const y of [4,6]) for(let x=4;x<=14;x+=2) out.push({x,y,z:2});
+    return out;
+  }
+  function covered(t, set){ return set.some(o=>o!==t && o.z===t.z+1 && Math.abs(o.x-t.x)<2 && Math.abs(o.y-t.y)<2); }
+  function sideBlocked(t, set, dir){ return set.some(o=>o!==t && o.z===t.z && Math.abs(o.y-t.y)<2 && (dir<0 ? (o.x<t.x && t.x-o.x<=2) : (o.x>t.x && o.x-t.x<=2))); }
+  function isFree(t, set){ return !covered(t,set) && (!sideBlocked(t,set,-1) || !sideBlocked(t,set,1)); }
+
+  const rnd = n=>Math.floor(Math.random()*n);
+  const shuffle = a=>{ for(let i=a.length-1;i>0;i--){ const j=rnd(i+1); [a[i],a[j]]=[a[j],a[i]]; } return a; };
+
+  /* Faces are dealt by playing the game BACKWARDS: repeatedly take two free positions and give them the same face.
+     That guarantees the board can always be cleared. */
+  function deal(positions, pairFaces){
+    for(let attempt=0; attempt<200; attempt++){
+      const rest = positions.slice();
+      const faces = pairFaces ? pairFaces.slice() : [];
+      if(!pairFaces) for(let i=0;i<positions.length/2;i++) faces.push(i % FACES.length);
+      shuffle(faces);
+      let ok = true, k = 0; const assign = new Map();
+      while(rest.length){
+        const free = rest.filter(t=>isFree(t,rest));
+        if(free.length<2){ ok = false; break; }
+        const a = free.splice(rnd(free.length),1)[0], b = free[rnd(free.length)];
+        const f = faces[k++ % faces.length]; assign.set(a,f); assign.set(b,f);
+        rest.splice(rest.indexOf(a),1); rest.splice(rest.indexOf(b),1);
+      }
+      if(ok) return assign;
+    }
+    return null;
+  }
+
+  /* ---------- state ---------- */
+  let tiles = [], sel = null, state = 'menu', score = 0, pairsDone = 0, hints = 0, shuffles = 3, t0 = 0, elapsed = 0, hintPair = null, hintUntil = 0;
+  let particles = [], flash = null;
+  let best = 0; try{ best = +localStorage.getItem(BEST_KEY)||0; }catch(e){}
+
+  function newBoard(){
+    let pos, assign;
+    do{ pos = layout(); assign = deal(pos); }while(!assign);
+    tiles = pos.map(p=>({x:p.x,y:p.y,z:p.z,f:assign.get(p),a:1,s:1,gone:false}));
+    sel = null; hintPair = null; score = 0; pairsDone = 0; hints = 0; shuffles = 3; elapsed = 0; particles = [];
+    updateHud(); $('shufBtn').textContent = '🔀 Shuffle (3)'; $('msg').textContent = '';
+  }
+  const live = ()=>tiles.filter(t=>!t.gone);
+  function freeTiles(){ const L = live(); return L.filter(t=>isFree(t,L)); }
+  function findPair(){
+    const fr = freeTiles(), by = {};
+    for(const t of fr){ (by[t.f] = by[t.f]||[]).push(t); if(by[t.f].length>=2) return [by[t.f][0], by[t.f][1]]; }
+    return null;
+  }
+
+  /* ---------- sizing + drawing ---------- */
+  function resize(){
+    dpr = window.devicePixelRatio||1; W = stage.clientWidth; H = stage.clientHeight;
+    cv.width = Math.round(W*dpr); cv.height = Math.round(H*dpr);
+    DZ = 0; /* set below once U known */
+    const cols = 20, rows = 12;
+    U = Math.min((W-14)/(cols+0.8), (H-14)/((rows*1.32)+0.6));
+    DZ = Math.max(2.5,U*0.28);
+    VU = Math.min(U*1.7, (H-14-2*DZ)/rows);   /* taller tiles on tall screens */
+    OX = (W - (cols*U + 2*DZ))/2 + 2*DZ; OY = (H - rows*VU)/2 + 2*DZ;
+    faceCache.clear();
+  }
+  const faceCache = new Map();
+  function faceImg(f, px){
+    const key = f+'|'+px; let c = faceCache.get(key);
+    if(!c){
+      c = document.createElement('canvas'); c.width = c.height = px; const g = c.getContext('2d');
+      const ph = f<12 ? TeaSprites.img(f) : null;
+      if(ph) g.drawImage(ph,0,0,px,px);
+      else { g.font = Math.round(px*0.78)+'px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText(FACES[f],px/2,px/2+px*0.05); }
+      faceCache.set(key,c);
+    }
+    return c;
+  }
+  TeaSprites.onReady(()=>faceCache.clear());
+  const tilePos = t=>({ x: OX + t.x*U - t.z*DZ, y: OY + t.y*VU - t.z*DZ });
+  function rr(g,x,y,w,h,r){ g.beginPath(); g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r); g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath(); }
+
+  function draw(now){
+    ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
+    const L = live(), freeSet = new Set(L.filter(t=>isFree(t,L)));
+    const order = tiles.filter(t=>!t.gone || t.a>0).sort((a,b)=>a.z-b.z||a.y-b.y||a.x-b.x);
+    const tw = 2*U-1, th = 2*VU-1;
+    const hintOn = hintPair && now<hintUntil;
+    for(const t of order){
+      const p = tilePos(t), s = t.s;
+      ctx.save(); ctx.globalAlpha = t.a;
+      ctx.translate(p.x+tw/2, p.y+th/2); ctx.scale(s,s); ctx.translate(-tw/2,-th/2);
+      // side / depth
+      ctx.fillStyle = '#2a6b4f'; rr(ctx,DZ*0.6,DZ*0.6,tw,th,U*0.28); ctx.fill();
+      const free = freeSet.has(t);
+      const isSel = sel===t, isHint = hintOn && (hintPair[0]===t||hintPair[1]===t);
+      ctx.fillStyle = isSel ? '#ffe9a6' : isHint ? '#d9ffd6' : free ? '#fbf6e6' : '#d7d0bb';
+      rr(ctx,0,0,tw,th,U*0.28); ctx.fill();
+      ctx.lineWidth = isSel||isHint ? 3 : 1.4; ctx.strokeStyle = isSel ? '#ff9a3d' : isHint ? '#37b24d' : TINTS[t.f%TINTS.length]+'88'; ctx.stroke();
+      const px = Math.round(Math.min(tw,th)*0.72*dpr);
+      const img = faceImg(t.f,px), isz = px/dpr;
+      ctx.globalAlpha = t.a*(free?1:0.62);
+      ctx.drawImage(img,(tw-isz)/2,(th-isz)/2,isz,isz);
+      ctx.restore();
+    }
+    for(let i=particles.length-1;i>=0;i--){ const q=particles[i]; q.life++; q.x+=q.vx; q.y+=q.vy; q.vy+=.12; if(q.life>q.max){ particles.splice(i,1); continue; }
+      ctx.globalAlpha=1-q.life/q.max; ctx.fillStyle=q.c; ctx.beginPath(); ctx.arc(q.x,q.y,q.r,0,6.283); ctx.fill(); }
+    ctx.globalAlpha = 1;
+    if(flash && now<flash.until){ ctx.fillStyle='rgba(255,90,90,.9)'; ctx.font='800 14px system-ui'; ctx.textAlign='center'; ctx.fillText(flash.txt,W/2,18); }
+  }
+
+  /* ---------- interaction ---------- */
+  function tileAt(x,y){
+    const L = live().sort((a,b)=>b.z-a.z||b.y-a.y||b.x-a.x);
+    const tw = 2*U, th = 2*VU;
+    for(const t of L){ const p = tilePos(t); if(x>=p.x && x<=p.x+tw && y>=p.y && y<=p.y+th) return t; }
+    return null;
+  }
+  function say(t, ms){ flash = {txt:t, until:performance.now()+(ms||1200)}; }
+  function removePair(a,b){
+    sel = null; hintPair = null; a.gone = b.gone = true; pairsDone++;
+    score += 100; updateHud();
+    for(const t of [a,b]){ const p = tilePos(t); for(let i=0;i<8;i++){ const an=Math.random()*6.283, sp=1+Math.random()*3; particles.push({x:p.x+U,y:p.y+VU,vx:Math.cos(an)*sp,vy:Math.sin(an)*sp-1,life:0,max:24+Math.random()*12,c:['#ffd24d','#ff9a3d','#8be28b'][i%3],r:2+Math.random()*2.5}); } }
+    const t1 = performance.now(); const A = [a,b];
+    (function f(now){ const k = Math.min(1,(now-t1)/220); A.forEach(t=>{ t.a = 1-k; t.s = 1+0.25*k; }); if(k<1) requestAnimationFrame(f); else A.forEach(t=>{ t.a=0; }); })(t1);
+    if(!live().length){ finish(true); return; }
+    if(!findPair()){
+      if(shuffles>0){ $('msg').textContent = 'No more matches — tap Shuffle!'; $('shufBtn').style.outline = '3px solid #ffd24d'; }
+      else { finish(false); }
+    }
+  }
+  cv.addEventListener('pointerdown',e=>{
+    if(state!=='playing') return;
+    const R = cv.getBoundingClientRect(); const t = tileAt(e.clientX-R.left, e.clientY-R.top);
+    if(!t) { sel = null; return; }
+    const L = live();
+    if(!isFree(t,L)){ say('That tile is blocked'); return; }
+    if(!sel){ sel = t; return; }
+    if(sel===t){ sel = null; return; }
+    if(sel.f===t.f){ removePair(sel,t); } else { sel = t; }
+  });
+  $('hintBtn').onclick = ()=>{
+    if(state!=='playing') return; const p = findPair();
+    if(!p){ say('No matches — shuffle!'); return; }
+    hints++; score = Math.max(0,score-150); updateHud(); hintPair = p; hintUntil = performance.now()+2200;
+  };
+  $('shufBtn').onclick = ()=>{
+    if(state!=='playing') return;
+    if(shuffles<=0){ say('No shuffles left'); return; }
+    const L = live(); const pf = []; const cnt = {}; L.forEach(t=>{ cnt[t.f] = (cnt[t.f]||0)+1; });
+    Object.keys(cnt).forEach(f=>{ for(let i=0;i<cnt[f]/2;i++) pf.push(+f); });
+    const assign = deal(L.map(t=>({x:t.x,y:t.y,z:t.z})), pf);
+    /* deal() works on position objects; rebuild by matching coordinates */
+    if(!assign){ say('Could not shuffle'); return; }
+    const byKey = new Map(); for(const [p,f] of assign) byKey.set(p.x+','+p.y+','+p.z, f);
+    L.forEach(t=>{ t.f = byKey.get(t.x+','+t.y+','+t.z); });
+    shuffles--; sel = null; hintPair = null; $('shufBtn').textContent = '🔀 Shuffle ('+shuffles+')'; $('shufBtn').style.outline = ''; $('msg').textContent = '';
+  };
+  $('newBtn').onclick = ()=>{ if(state==='playing' && !confirm('Start a new game?')) return; start(); };
+
+  /* ---------- flow ---------- */
+  function fmt(s){ s=Math.floor(s); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); }
+  function updateHud(){ $('score').textContent = score; $('left').textContent = 48-pairsDone; $('time').textContent = fmt(elapsed); }
+  function start(){ newBoard(); state = 'playing'; t0 = performance.now(); $('overlay').classList.add('hide'); }
+  function finish(won){
+    if(state!=='playing') return; state = 'over';
+    const secs = (performance.now()-t0)/1000;
+    let final = score;
+    if(won) final = Math.max(0, pairsDone*100 + Math.max(0, Math.round(900-secs))*5 - hints*150);
+    if(won && final>best){ best = final; try{ localStorage.setItem(BEST_KEY,best); }catch(e){} }
+    const o = $('overlay');
+    o.innerHTML = won
+      ? '<h1>🎉 Board cleared!</h1><div class="stat">'+final+'</div><div class="sub">Time '+fmt(secs)+' · Hints '+hints+' · Best '+best+'</div>'
+      : '<h1>😮 No moves left</h1><div class="sub">You cleared '+pairsDone+' of 48 pairs. Give it another go!</div>';
+    o.innerHTML += '<div class="row"><button class="btn" id="again">Play again</button></div><div class="row" id="extra"></div>';
+    o.classList.remove('hide'); $('again').onclick = start;
+    const ex = $('extra');
+    if(window.TeaLB && TeaLB.enabled){
+      const b = document.createElement('button'); b.className='btn alt'; b.textContent='🏆 Ranks'; b.onclick=()=>TeaLB.open(); ex.appendChild(b);
+      if(won) setTimeout(()=>{ if(state==='over' && final>0) TeaLB.submit(final,secs); }, 800);
+    }
+    const tip = window.TeaSupport && TeaSupport.button('btn alt'); if(tip) ex.appendChild(tip);
+  }
+  $('playBtn').onclick = start;
+  if(window.TeaLB && TeaLB.enabled){ $('lbBtn').style.display=''; $('lbBtn').onclick = ()=>TeaLB.open(); }
+  function loop(now){
+    if(state==='playing'){ elapsed = (now-t0)/1000; $('time').textContent = fmt(elapsed); }
+    try{ draw(now); }catch(e){}
+    requestAnimationFrame(loop);
+  }
+  window.addEventListener('resize',resize);
+  resize(); newBoard(); requestAnimationFrame(loop);
+  window.__mj = { get state(){return state;}, get score(){return score;}, get left(){return 48-pairsDone;}, start,
+    solveStep(){ const p = findPair(); if(!p) return false; removePair(p[0],p[1]); return true; },
+    solvable(){
+      /* randomised depth-first search on the current board, for testing the "always solvable" promise */
+      const L = live().map(t=>({x:t.x,y:t.y,z:t.z,f:t.f})); let nodes = 0;
+      function go(set){
+        if(!set.length) return true; if(++nodes>400000) return null;
+        const fr = set.filter(t=>isFree(t,set)); const by = {}; fr.forEach(t=>(by[t.f]=by[t.f]||[]).push(t));
+        const opts = []; for(const f in by){ const a = by[f]; for(let i=0;i<a.length;i++) for(let j=i+1;j<a.length;j++) opts.push([a[i],a[j]]); }
+        shuffle(opts);
+        for(const [a,b] of opts){ const r = go(set.filter(t=>t!==a&&t!==b)); if(r===true) return true; if(r===null) return null; }
+        return false;
+      }
+      return go(L);
+    },
+    tileCount(){ return live().length; }, freeCount(){ return freeTiles().length; }, setT0(v){ t0 = v; }, get pairsDone(){return pairsDone;} };
+})();
+</script>
+<script>if("serviceWorker" in navigator && location.protocol.indexOf("http")===0)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})});</script>
+</body></html>

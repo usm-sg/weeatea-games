@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Tea Checkers — We Eat Tea</title>
+<style>
+:root{--bg:#1b1410;--panel:#2b2018;--ink:#fbeed8;--dim:#c9b79c;--gold:#ffc24d;--jade:#3ad29f}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+html,body{margin:0;height:100%;background:radial-gradient(circle at 50% 40%,#2e2218,#120d09);color:var(--ink);font-family:system-ui,-apple-system,sans-serif;overflow:hidden;touch-action:none}
+#app{height:100%;display:flex;flex-direction:column;padding:8px;gap:8px}
+#hud{display:flex;gap:8px;align-items:stretch}
+.box{flex:1;background:var(--panel);border-radius:12px;padding:5px 8px;text-align:center;font-size:12px;color:var(--dim)}
+.box b{display:block;font-size:18px}
+#you b{color:var(--gold)} #cpu b{color:var(--jade)}
+#stage{flex:1;min-height:0;position:relative}
+canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+#msg{text-align:center;font-size:14px;color:var(--ink);height:20px}
+#bottom{display:flex;gap:8px;justify-content:center}
+.btn{font:inherit;font-weight:800;font-size:14px;border:0;border-radius:12px;padding:10px 16px;background:linear-gradient(#ffd24d,#ff9a3d);color:#2b1704;cursor:pointer;box-shadow:0 3px 0 #b8651b}
+.btn.alt{background:#4a3624;color:#fff;box-shadow:0 3px 0 #251a10}
+.btn:active{transform:translateY(2px)}.btn:disabled{opacity:.4}
+#overlay{position:fixed;inset:0;background:rgba(14,9,6,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:20px;z-index:5}
+#overlay.hide{display:none}
+#overlay h1{margin:0;font-size:32px}
+.sub{color:var(--dim);max-width:350px;font-size:14px;line-height:1.45}
+.row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.lv{min-width:104px}
+#stats{font-size:12px;color:var(--dim)}
+</style><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#1c120b"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+</head><body>
+<div id="app">
+  <div id="hud">
+    <div class="box" id="you">You (amber)<b id="youN">0/10</b></div>
+    <div class="box" id="mv">Moves<b id="moves">0</b></div>
+    <div class="box" id="cpu">Computer (jade)<b id="cpuN">0/10</b></div>
+  </div>
+  <div id="stage"><canvas id="cv"></canvas></div>
+  <div id="msg"></div>
+  <div id="bottom">
+    <button class="btn alt" id="undoBtn">↶ Undo</button>
+    <button class="btn alt" id="newBtn">New game</button>
+  </div>
+</div>
+<div id="overlay">
+  <h1>🥢 Tea Checkers</h1>
+  <div class="sub">Chinese Checkers against the computer. Move all 10 of your amber marbles across the star into the opposite corner before the computer does. Step to a neighbouring hole, or hop over marbles — and keep hopping in a chain!</div>
+  <div class="row">
+    <button class="btn lv" data-lv="1">😊 Easy</button>
+    <button class="btn lv" data-lv="2">🙂 Medium</button>
+    <button class="btn lv" data-lv="3">😎 Hard</button>
+  </div>
+  <div id="stats"></div>
+  <div class="row" id="extra"></div>
+</div>
+
+<script src="support.js"></script>
+<script>
+/* Tea Games photo sprites — shared by every game and by the Photo Studio.
+   Reads 12 photo slots from this browser (IndexedDB), or from a teapack.json file
+   placed next to the games (use that one when bundling the games into a store app).
+   Any slot with no photo falls back to the normal emoji, so the games never break. */
+(function(){
+  var DB = 'tea-sprites', STORE = 'pack', N = 12;
+  var imgs = {}, maps = {}, cbs = [], isReady = false;
+  var S = window.TeaSprites = {
+    N: N,
+    ready: false,
+    map: function(o){ for(var k in o) maps[k] = o[k]; },
+    img: function(slot){ return imgs[slot] || null; },
+    forEmoji: function(e){ var i = maps[e]; return (i == null) ? null : (imgs[i] || null); },
+    onReady: function(cb){ if(isReady) cb(); else cbs.push(cb); }
+  };
+  function done(){ isReady = true; S.ready = true; var a = cbs; cbs = []; a.forEach(function(f){ try{ f(); }catch(e){} }); }
+
+  function openDB(){
+    return new Promise(function(res, rej){
+      if(!window.indexedDB) return rej(new Error('no idb'));
+      var r = indexedDB.open(DB, 1);
+      r.onupgradeneeded = function(){ r.result.createObjectStore(STORE, { keyPath: 'id' }); };
+      r.onsuccess = function(){ res(r.result); };
+      r.onerror = function(){ rej(r.error); };
+    });
+  }
+  function readAll(){
+    return openDB().then(function(db){
+      return new Promise(function(res, rej){
+        var q = db.transaction(STORE).objectStore(STORE).getAll();
+        q.onsuccess = function(){ res(q.result || []); };
+        q.onerror = function(){ rej(q.error); };
+      });
+    });
+  }
+  function fromPack(){
+    /* optional bundled file; the service worker keeps a copy so it also works offline */
+    return fetch('teapack.json').then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){ return (j && j.slots) ? j.slots.map(function(s){ return { id: s.id, data: s.data }; }) : []; })
+      .catch(function(){ return []; });
+  }
+  function load(item){
+    return new Promise(function(res){
+      if(!item || !item.data) return res();
+      var im = new Image();
+      im.onload = function(){ imgs[item.id] = im; res(); };
+      im.onerror = function(){ res(); };
+      im.src = item.data;
+    });
+  }
+  Promise.all([ readAll().catch(function(){ return []; }), fromPack() ]).then(function(r){
+    var byId = {};
+    r[1].forEach(function(x){ byId[x.id] = x; });   /* bundled pack first … */
+    r[0].forEach(function(x){ byId[x.id] = x; });   /* … the player's own photos win */
+    return Promise.all(Object.keys(byId).map(function(k){ return load(byId[k]); }));
+  }).then(done, done);
+})();
+
+</script>
+
+<script>
+(function(){
+  const $ = id=>document.getElementById(id);
+  const cv = $('cv'), ctx = cv.getContext('2d'), stage = $('stage');
+  const DIRS = [[1,-1,0],[1,0,-1],[0,1,-1],[-1,1,0],[-1,0,1],[0,-1,1]];
+  const SQ3 = Math.sqrt(3);
+
+  /* ---------- board: 121 holes ---------- */
+  const cells = [], idx = new Map();
+  for(let x=-8;x<=8;x++) for(let z=-8;z<=8;z++){
+    const y = -x-z;
+    if(y<-8||y>8) continue;
+    if((x>=-4&&y>=-4&&z>=-4) || (x<=4&&y<=4&&z<=4)){ idx.set(x+','+z, cells.length); cells.push({x,y,z}); }
+  }
+  const N = cells.length; // 121
+  const nb = cells.map(c=>DIRS.map(d=>{ const k = idx.get((c.x+d[0])+','+(c.z+d[2])); return k==null?-1:k; }));
+  const HOME = {1:[], 2:[]};   // 1 = human (bottom, x<=-5), 2 = computer (top, x>=5)
+  cells.forEach((c,i)=>{ if(c.x<=-5) HOME[1].push(i); if(c.x>=5) HOME[2].push(i); });
+  const TARGET = {1:HOME[2], 2:HOME[1]};
+  const inTarget = {1:new Set(TARGET[1]), 2:new Set(TARGET[2])};
+  const GOAL = {1: cells.findIndex(c=>c.x===8), 2: cells.findIndex(c=>c.x===-8)};
+  const dist = (a,b)=>{ const p=cells[a], q=cells[b]; return Math.max(Math.abs(p.x-q.x),Math.abs(p.y-q.y),Math.abs(p.z-q.z)); };
+  const DG = {1: cells.map((_,i)=>dist(i,GOAL[1])), 2: cells.map((_,i)=>dist(i,GOAL[2]))};
+
+  /* ---------- state ---------- */
+  let occ, turn, level = 2, moves = 0, state = 'menu', sel = -1, targets = null, history = [], anim = null, thinking = false, last = null;
+  const stats = (()=>{ try{ return JSON.parse(localStorage.getItem('teacheckers_stats')||'{}'); }catch(e){ return {}; } })();
+  const saveStats = ()=>{ try{ localStorage.setItem('teacheckers_stats', JSON.stringify(stats)); }catch(e){} };
+  function showStats(){ const s = stats; const L = ['','Easy','Medium','Hard'];
+    $('stats').textContent = [1,2,3].map(l=>L[l]+': '+((s[l]&&s[l].w)||0)+' won / '+((s[l]&&s[l].l)||0)+' lost').join('  ·  '); }
+
+  function setup(){
+    occ = new Array(N).fill(0);
+    HOME[1].forEach(i=>occ[i]=1); HOME[2].forEach(i=>occ[i]=2);
+    turn = 1; moves = 0; sel = -1; targets = null; history = []; last = null; anim = null;
+    updateHud();
+  }
+
+  /* ---------- move generation (returns Map dest -> path[]) ---------- */
+  function movesFor(o, from){
+    const res = new Map(); const p = o[from];
+    o[from] = 0;                                  // marble is lifted while hopping
+    for(let d=0;d<6;d++){ const n = nb[from][d]; if(n>=0 && !o[n]) res.set(n,[from,n]); }
+    const seen = new Set([from]); const q = [[from,[from]]];
+    while(q.length){
+      const [c,path] = q.shift();
+      for(let d=0;d<6;d++){
+        const over = nb[c][d]; if(over<0 || !o[over]) continue;
+        const land = nb[over][d]; if(land<0 || o[land] || seen.has(land)) continue;
+        seen.add(land); const np = path.concat(land); q.push([land,np]); if(!res.has(land)) res.set(land,np);
+      }
+    }
+    o[from] = p; return res;
+  }
+  function allMoves(o, pl, forAI){
+    const out = [];
+    for(let i=0;i<N;i++) if(o[i]===pl){
+      const wasIn = inTarget[pl].has(i);
+      for(const [to,path] of movesFor(o,i)){
+        if(forAI && wasIn && !inTarget[pl].has(to)) continue;   // computer never walks back out of its goal
+        out.push({from:i,to,path});
+      }
+    }
+    return out;
+  }
+  const PAR = {w:0.4, sq:0.03, cand:25};
+  function evalBoard(o, pl, sq){
+    if(sq===undefined) sq = PAR.sq;            // higher = better for pl
+    const op = pl===1?2:1; let me = 0, you = 0, meIn = 0, youIn = 0;
+    for(let i=0;i<N;i++){ if(o[i]===pl){ me += DG[pl][i] + sq*DG[pl][i]*DG[pl][i]; if(inTarget[pl].has(i)) meIn++; } else if(o[i]===op){ you += DG[op][i] + sq*DG[op][i]*DG[op][i]; if(inTarget[op].has(i)) youIn++; } }
+    return (you - me) + (meIn - youIn)*0.6;
+  }
+  function apply(o, m){ const p = o[m.from]; o[m.from] = 0; o[m.to] = p; }
+  function undoApply(o, m, p){ o[m.to] = 0; o[m.from] = p; }
+  function chooseAI(pl, lv){
+    const ms = allMoves(occ, pl, true); if(!ms.length) return null;
+    const op = pl===1?2:1;
+    const scored = ms.map(m=>{ apply(occ,m); const s = evalBoard(occ,pl, lv===3?PAR.sq:0); undoApply(occ,m,pl); return {m, s}; });
+    scored.sort((a,b)=>b.s-a.s);
+    if(lv===1){ return Math.random()<0.5 ? scored[Math.floor(Math.random()*scored.length)].m : scored[Math.floor(Math.random()*Math.max(3,Math.ceil(scored.length*0.6)))].m; }
+    if(lv===2){ const top = scored.filter(x=>x.s>=scored[0].s-0.01); return top[Math.floor(Math.random()*top.length)].m; }
+    // hard: look at my best 25 moves, assume the opponent then plays its best reply
+    let bestM = scored[0].m, bestV = -1e9;
+    for(const {m,s:e1} of scored.slice(0,PAR.cand)){
+      apply(occ,m);
+      let worst = 1e9;
+      const reps = allMoves(occ, op, false);
+      if(!reps.length) worst = e1;
+      for(const r of reps){ apply(occ,r); const v = evalBoard(occ,pl); undoApply(occ,r,op); if(v<worst) worst = v; }
+      undoApply(occ,m,pl);
+      const v = e1 + PAR.w*(worst-e1) + Math.random()*0.01;
+      if(v>bestV){ bestV = v; bestM = m; }
+    }
+    return bestM;
+  }
+  function won(o, pl){ let n = 0; for(const i of TARGET[pl]) if(o[i]===pl) n++; return n===10; }   // all 10 marbles in the opposite corner
+  const count = (pl)=>TARGET[pl].filter(i=>occ[i]===pl).length;
+  function updateHud(){ $('youN').textContent = count(1)+'/10'; $('cpuN').textContent = count(2)+'/10'; $('moves').textContent = moves; $('undoBtn').disabled = !history.length || thinking || state!=='playing'; }
+
+  /* ---------- drawing ---------- */
+  let D = 20, CX = 0, CY = 0, dpr = 1;
+  function resize(){
+    dpr = window.devicePixelRatio||1; const W = stage.clientWidth, H = stage.clientHeight;
+    cv.width = Math.round(W*dpr); cv.height = Math.round(H*dpr);
+    D = Math.min((W-16)/13.4, (H-16)/15.2); CX = W/2; CY = H/2;
+  }
+  const A = [0,-1], Bv = [SQ3/2,0.5], Cv = [-SQ3/2,0.5];
+  const pos = i=>{ const c = cells[i]; const k = D/SQ3; return [CX + (c.x*A[0]+c.y*Bv[0]+c.z*Cv[0])*k, CY + (c.x*A[1]+c.y*Bv[1]+c.z*Cv[1])*k]; };
+  function marble(x,y,r,pl,lift){
+    const g = ctx.createRadialGradient(x-r*.35,y-r*.4-lift,r*.1,x,y-lift,r*1.05);
+    if(pl===1){ g.addColorStop(0,'#fff0c2'); g.addColorStop(.35,'#ffb02e'); g.addColorStop(1,'#a85a00'); }
+    else { g.addColorStop(0,'#d9fff0'); g.addColorStop(.35,'#3ad29f'); g.addColorStop(1,'#0b6b4d'); }
+    ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(x+1,y+r*.5,r*.9,r*.45,0,0,6.283); ctx.fill();
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x,y-lift,r,0,6.283); ctx.fill();
+  }
+  function draw(now){
+    const W = stage.clientWidth, H = stage.clientHeight;
+    ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
+    // board plate
+    ctx.fillStyle = '#6b4a2b'; ctx.beginPath();
+    const rim = []; for(let i=0;i<N;i++){ const c = cells[i]; if(Math.max(Math.abs(c.x),Math.abs(c.y),Math.abs(c.z))===8 || (Math.abs(c.x)>=4&&Math.abs(c.y)>=4)||(Math.abs(c.y)>=4&&Math.abs(c.z)>=4)||(Math.abs(c.x)>=4&&Math.abs(c.z)>=4)) rim.push(i); }
+    for(let i=0;i<N;i++){ const [x,y] = pos(i); ctx.moveTo(x+D*0.82,y); ctx.arc(x,y,D*0.82,0,6.283); }
+    ctx.fill();
+    for(let i=0;i<N;i++){
+      const [x,y] = pos(i); const c = cells[i];
+      let col = '#3a2817';
+      if(inTarget[1].has(i)) col = '#4a3a1a'; else if(inTarget[2].has(i)) col = '#1a3d33';
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x,y,D*0.34,0,6.283); ctx.fill();
+    }
+    if(last){ ctx.strokeStyle='rgba(255,255,255,.35)'; ctx.lineWidth=2; ctx.setLineDash([4,4]); ctx.beginPath(); last.path.forEach((p,k)=>{ const [x,y]=pos(p); k?ctx.lineTo(x,y):ctx.moveTo(x,y); }); ctx.stroke(); ctx.setLineDash([]); }
+    if(targets){ for(const [to] of targets){ const [x,y] = pos(to); ctx.fillStyle = 'rgba(255,224,130,'+(0.45+0.25*Math.sin(now/200))+')'; ctx.beginPath(); ctx.arc(x,y,D*0.26,0,6.283); ctx.fill(); } }
+    for(let i=0;i<N;i++){
+      if(!occ[i]) continue; if(anim && anim.cell===i) continue;
+      const [x,y] = pos(i); const s = i===sel;
+      marble(x,y,D*0.36,occ[i], s?D*0.14:0);
+      if(s){ ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(x,y-D*0.14,D*0.42,0,6.283); ctx.stroke(); }
+    }
+    if(anim){ marble(anim.x,anim.y,D*0.36,anim.pl,D*0.1*Math.sin(Math.PI*anim.frac)); }
+  }
+
+  /* ---------- flow ---------- */
+  function animateMove(m, pl, done){
+    const pts = m.path.map(pos); let seg = 0, t0 = performance.now(); const per = 170;
+    anim = {cell:m.from, pl, x:pts[0][0], y:pts[0][1], frac:0};
+    (function step(now){
+      const k = (now-t0)/per; if(k>=1){ seg++; t0 = now; }
+      if(seg>=pts.length-1){ anim = null; done(); return; }
+      const f = Math.min(1,(now-t0)/per), a = pts[seg], b = pts[seg+1];
+      anim.x = a[0]+(b[0]-a[0])*f; anim.y = a[1]+(b[1]-a[1])*f; anim.frac = f;
+      requestAnimationFrame(step);
+    })(t0);
+  }
+  function doMove(m, pl, cb){
+    history.push({occ:occ.slice(), moves, last});
+    const orig = occ[m.from];
+    animateMove(m, pl, ()=>{ apply(occ,m); moves++; last = m; sel = -1; targets = null; updateHud(); cb(); });
+  }
+  function afterMove(pl){
+    if(won(occ,pl)){ finish(pl); return; }
+    turn = pl===1?2:1;
+    if(turn===2) cpuTurn(); else { $('msg').textContent = 'Your turn — tap an amber marble'; updateHud(); }
+  }
+  function cpuTurn(){
+    thinking = true; $('msg').textContent = 'Computer is thinking…'; updateHud();
+    setTimeout(()=>{
+      const m = chooseAI(2, level);
+      thinking = false;
+      if(!m){ $('msg').textContent = 'Computer has no moves — your turn'; turn = 1; return; }
+      doMove(m, 2, ()=>afterMove(2));
+    }, 260);
+  }
+  function finish(pl){
+    state = 'over'; updateHud();
+    const you = pl===1; const s = stats[level] = stats[level]||{w:0,l:0}; if(you) s.w++; else s.l++; saveStats();
+    const o = $('overlay');
+    o.innerHTML = '<h1>'+(you?'🎉 You win!':'😅 Computer wins')+'</h1><div class="sub">'+(you?'Nicely done — all your marbles made it across.':'So close! Try again, or pick an easier level.')+' Moves: '+moves+'</div><div class="row"><button class="btn" id="again">Play again</button></div><div class="row" id="extra"></div><div id="stats"></div>';
+    o.classList.remove('hide'); $('again').onclick = ()=>{ o.innerHTML = menuHtml; bindMenu(); showStats(); };
+    showStats();
+    const tip = window.TeaSupport && TeaSupport.button('btn alt'); if(tip) $('extra').appendChild(tip);
+  }
+  const menuHtml = $('overlay').innerHTML;
+  function bindMenu(){ document.querySelectorAll('.lv').forEach(b=>b.onclick = ()=>{ level = +b.dataset.lv; start(); }); }
+  function start(){ setup(); state = 'playing'; $('overlay').classList.add('hide'); $('msg').textContent = 'Your turn — tap an amber marble'; updateHud(); }
+
+  /* ---------- input ---------- */
+  function hit(e){
+    const R = cv.getBoundingClientRect(); const px = e.clientX-R.left, py = e.clientY-R.top; let best = -1, bd = D*0.55;
+    for(let i=0;i<N;i++){ const [x,y] = pos(i); const d = Math.hypot(px-x,py-y); if(d<bd){ bd = d; best = i; } }
+    return best;
+  }
+  cv.addEventListener('pointerdown',e=>{
+    if(state!=='playing' || turn!==1 || thinking || anim) return;
+    const i = hit(e); if(i<0){ sel = -1; targets = null; return; }
+    if(occ[i]===1){ sel = i; targets = movesFor(occ,i); return; }
+    if(sel>=0 && targets && targets.has(i)){
+      const m = {from:sel, to:i, path:targets.get(i)}; targets = null;
+      doMove(m,1,()=>afterMove(1));
+    } else { sel = -1; targets = null; }
+  });
+  $('undoBtn').onclick = ()=>{ if(!history.length || thinking || anim || state!=='playing') return;
+    // undo back to the human's previous turn (undo the computer's reply too)
+    let h = history.pop(); if(turn===1 && history.length && h && h.occ){ /* reply was already applied: pop one more */ const h2 = history.pop(); h = h2 || h; }
+    occ = h.occ; moves = h.moves; last = h.last; sel = -1; targets = null; turn = 1; $('msg').textContent = 'Your turn'; updateHud(); };
+  $('newBtn').onclick = ()=>{ if(state==='playing' && moves>0 && !confirm('Leave this game?')) return; $('overlay').innerHTML = menuHtml; bindMenu(); showStats(); $('overlay').classList.remove('hide'); state='menu'; };
+  bindMenu(); showStats();
+  window.addEventListener('resize',resize); resize(); setup();
+  (function loop(now){ try{ draw(now); }catch(e){} requestAnimationFrame(loop); })(0);
+
+  /* test hooks */
+  window.__cc = { N, homes:[HOME[1].length,HOME[2].length], get state(){return state;}, get turn(){return turn;}, get moves(){return moves;},
+    count1:()=>count(1), count2:()=>count(2), setup,
+    selfPlay(l1,l2,cap){ setup(); let n=0, w=0; const lv = {1:l1,2:l2};
+      while(n<(cap||400) && !w){ const pl = turn; const m = chooseAI(pl, lv[pl]); if(!m){ turn = pl===1?2:1; n++; continue; } apply(occ,m); moves++; if(won(occ,pl)) w = pl; else turn = pl===1?2:1; n++; }
+      return {winner:w, plies:n, c1:count(1), c2:count(2)}; },
+    humanMoves(){ return allMoves(occ,1,false).map(m=>({from:m.from,to:m.to})); },
+    PAR, pos:i=>pos(i), startAt(l){ level=l; start(); } };
+})();
+</script>
+<script>if("serviceWorker" in navigator && location.protocol.indexOf("http")===0)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})});</script>
+</body></html>

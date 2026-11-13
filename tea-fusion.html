@@ -41,6 +41,8 @@
   }
   button.btn2:active { transform:translateY(3px); box-shadow:0 1px 0 #a84e14; }
   #chain { display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:2px; max-width:400px; }
+  .tile .emo img{width:1.55em;height:1.55em;display:block;margin:0 auto}
+  #chain .step img{width:1.25em;height:1.25em;vertical-align:middle}
   #chain .step { font-size:17px; opacity:0.3; transition:opacity .2s, transform .2s; filter:grayscale(0.7); }
   #chain .step.reached { opacity:1; filter:none; }
   #chain .step.top { transform:scale(1.35); }
@@ -69,6 +71,7 @@
   button.btn.alt { background:linear-gradient(#5b6a95,#3e4b73); box-shadow:0 6px 0 #262f4d, 0 8px 16px rgba(0,0,0,0.4); }
   button.btn:active { transform:translateY(4px); box-shadow:0 2px 0 #a84e14; }
 </style>
+<!--PWA-HEAD--><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#1c120b"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><!--/PWA-HEAD-->
 </head>
 <body>
 <div id="wrap">
@@ -101,6 +104,67 @@
   window.TEA_LB_API  = 'https://tea-leaderboard.usoemoe.workers.dev';   // e.g. 'https://tea-leaderboard.yourname.workers.dev'
   window.TEA_LB_GAME = 'tea-fusion';
 </script>
+<script src="support.js"></script>
+<!--SPRITES--><script>
+/* Tea Games photo sprites — shared by every game and by the Photo Studio.
+   Reads 12 photo slots from this browser (IndexedDB), or from a teapack.json file
+   placed next to the games (use that one when bundling the games into a store app).
+   Any slot with no photo falls back to the normal emoji, so the games never break. */
+(function(){
+  var DB = 'tea-sprites', STORE = 'pack', N = 12;
+  var imgs = {}, maps = {}, cbs = [], isReady = false;
+  var S = window.TeaSprites = {
+    N: N,
+    ready: false,
+    map: function(o){ for(var k in o) maps[k] = o[k]; },
+    img: function(slot){ return imgs[slot] || null; },
+    forEmoji: function(e){ var i = maps[e]; return (i == null) ? null : (imgs[i] || null); },
+    onReady: function(cb){ if(isReady) cb(); else cbs.push(cb); }
+  };
+  function done(){ isReady = true; S.ready = true; var a = cbs; cbs = []; a.forEach(function(f){ try{ f(); }catch(e){} }); }
+
+  function openDB(){
+    return new Promise(function(res, rej){
+      if(!window.indexedDB) return rej(new Error('no idb'));
+      var r = indexedDB.open(DB, 1);
+      r.onupgradeneeded = function(){ r.result.createObjectStore(STORE, { keyPath: 'id' }); };
+      r.onsuccess = function(){ res(r.result); };
+      r.onerror = function(){ rej(r.error); };
+    });
+  }
+  function readAll(){
+    return openDB().then(function(db){
+      return new Promise(function(res, rej){
+        var q = db.transaction(STORE).objectStore(STORE).getAll();
+        q.onsuccess = function(){ res(q.result || []); };
+        q.onerror = function(){ rej(q.error); };
+      });
+    });
+  }
+  function fromPack(){
+    /* optional bundled file; the service worker keeps a copy so it also works offline */
+    return fetch('teapack.json').then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){ return (j && j.slots) ? j.slots.map(function(s){ return { id: s.id, data: s.data }; }) : []; })
+      .catch(function(){ return []; });
+  }
+  function load(item){
+    return new Promise(function(res){
+      if(!item || !item.data) return res();
+      var im = new Image();
+      im.onload = function(){ imgs[item.id] = im; res(); };
+      im.onerror = function(){ res(); };
+      im.src = item.data;
+    });
+  }
+  Promise.all([ readAll().catch(function(){ return []; }), fromPack() ]).then(function(r){
+    var byId = {};
+    r[1].forEach(function(x){ byId[x.id] = x; });   /* bundled pack first … */
+    r[0].forEach(function(x){ byId[x.id] = x; });   /* … the player's own photos win */
+    return Promise.all(Object.keys(byId).map(function(k){ return load(byId[k]); }));
+  }).then(done, done);
+})();
+
+</script><!--/SPRITES-->
 <!--LB-WIDGET--><script>
 /* Tea Games leaderboard widget — shared by every game.
    Needs window.TEA_LB_API (Worker URL) and window.TEA_LB_GAME set before this runs.
@@ -121,6 +185,34 @@
         : (Date.now().toString(36) + Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 8));
     lsSet(PID_KEY, pid);
   }
+
+  /* ---------- offline queue: scores played with no signal are sent later ---------- */
+  var Q_KEY = 'tealb_queue';
+  function qGet(){ try{ var a = JSON.parse(lsGet(Q_KEY) || '[]'); return Array.isArray(a) ? a : []; }catch(e){ return []; } }
+  function qPut(a){ lsSet(Q_KEY, JSON.stringify(a.slice(-30))); }
+  function qAdd(item){
+    var a = qGet(); a.push(item);
+    /* keep only the best 3 per game so a long offline session can't flood the server */
+    var by = {}; a.forEach(function(x){ (by[x.game] = by[x.game] || []).push(x); });
+    var out = []; Object.keys(by).forEach(function(g){ by[g].sort(function(x, y){ return y.score - x.score; }); out = out.concat(by[g].slice(0, 3)); });
+    qPut(out);
+  }
+  var flushing = false;
+  function flushQueue(){
+    if(flushing) return; var a = qGet(); if(!a.length) return;
+    flushing = true;
+    var keep = [];
+    (function next(i){
+      if(i >= a.length){ qPut(keep); flushing = false; return; }
+      var it = a[i];
+      fetch(API + '/api/score', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ game: it.game, pid: pid, name: it.name, score: it.score, secs: it.secs }) })
+      .then(function(){ next(i + 1); })          /* accepted or rejected by the server: either way, done with it */
+      .catch(function(){ keep = keep.concat(a.slice(i)); qPut(keep); flushing = false; });  /* still offline: try again later */
+    })(0);
+  }
+  window.addEventListener('online', flushQueue);
+  setTimeout(flushQueue, 1500);
 
   var css = '\
 .tlb-back{position:fixed;inset:0;z-index:99999;display:none;align-items:center;justify-content:center;padding:14px;background:rgba(5,8,18,.8);font-family:"Segoe UI",system-ui,sans-serif;-webkit-tap-highlight-color:transparent}\
@@ -210,14 +302,15 @@
     var my = ++reqSeq;
     var q = 'game=' + encodeURIComponent(GAME) + '&period=' + period + '&limit=25&pid=' + encodeURIComponent(pid);
     if(onlyMine && myCountry) q += '&country=' + myCountry;
-    fetch(API + '/api/top?' + q).then(function(r){ return r.json(); }).then(function(d){
+    var ckey = 'tealb_cache_' + GAME + '_' + period + '_' + (onlyMine ? 'c' : 'w');
+    function drawEntries(d, stale){
       if(my !== reqSeq) return;
-      if(d.error) throw new Error(d.error);
       if(d.you_country && !myCountry){
         myCountry = d.you_country;
         if(scopeBtn && myCountry !== 'XX') scopeBtn.textContent = flag(myCountry) + ' ' + myCountry;
       }
       listBox.innerHTML = '';
+      if(stale) listBox.appendChild(el('div', 'tlb-empty', 'Offline — showing the last saved board.'));
       if(!d.entries.length){ listBox.appendChild(el('div', 'tlb-empty', 'No scores here yet — be the first!')); return; }
       var inList = false;
       d.entries.forEach(function(e){
@@ -238,8 +331,16 @@
         li2.appendChild(el('div', 'tlb-s', fmt(d.me.score)));
         listBox.appendChild(li2);
       }
+    }
+    fetch(API + '/api/top?' + q).then(function(r){ return r.json(); }).then(function(d){
+      if(my !== reqSeq) return;
+      if(d.error) throw new Error(d.error);
+      lsSet(ckey, JSON.stringify(d));
+      drawEntries(d, false);
     }).catch(function(){
       if(my !== reqSeq) return;
+      var c = null; try{ c = JSON.parse(lsGet(ckey) || 'null'); }catch(e){}
+      if(c && c.entries){ drawEntries(c, true); return; }
       listBox.innerHTML = '';
       var m = el('div', 'tlb-empty', "Couldn't reach the leaderboard. Check your connection."); listBox.appendChild(m);
     });
@@ -274,8 +375,19 @@
         if(!res.ok) throw new Error(res.d && res.d.error || 'error');
         myCountry = res.d.country || myCountry; showResult(res.d, score);
       }).catch(function(err){
-        ok.disabled = false; msg.className = 'tlb-msg err';
         var m = String(err && err.message || '');
+        /* a failed fetch() is a TypeError; replies from the server arrive as plain Errors */
+        if(navigator.onLine === false || err instanceof TypeError){
+          qAdd({ game: GAME, name: name, score: score, secs: secs, t: Date.now() });
+          card.innerHTML = '';
+          card.appendChild(el('div', 'tlb-title', '📴 Saved offline'));
+          card.appendChild(el('div', 'tlb-sub', name.toUpperCase()));
+          card.appendChild(el('div', 'tlb-score', fmt(score)));
+          card.appendChild(el('div', 'tlb-msg', "No connection right now. Your score will be sent automatically when you're back online."));
+          var r2 = el('div', 'tlb-row'); var c2 = el('button', 'tlb-btn', 'OK'); c2.onclick = close; r2.appendChild(c2); card.appendChild(r2);
+          return;
+        }
+        ok.disabled = false; msg.className = 'tlb-msg err';
         msg.textContent = m === 'implausible' || m === 'too_short' ? "That score couldn't be verified."
           : m === 'rate_limited' ? 'Too many submissions — try again later.'
           : "Couldn't reach the leaderboard. Tap Submit to retry.";
@@ -332,6 +444,8 @@
     { v:4096, emoji:'🎉', color:'#ff9a3d' },
   ];
   const tileInfo = v=> CHAIN.find(c=>c.v===v) || CHAIN[CHAIN.length-1];
+  function glyph(info){ const im = window.TeaSprites && TeaSprites.img(CHAIN.indexOf(info));
+    return im ? '<img class="photo" alt="" src="'+im.src+'">' : info.emoji; }
 
   let tiles = [], nextId = 1, score = 0, best = 0, state = 'menu', history = [], busy = false, won = false;
   let runStart = 0;
@@ -347,7 +461,7 @@
     const info = tileInfo(t.v);
     t.el.style.background = info.color;
     t.el.style.fontSize = Math.max(14, cell*0.42)+'px';
-    t.el.innerHTML = `<div class="emo">${info.emoji}</div><div class="val">${t.v}</div>`;
+    t.el.innerHTML = `<div class="emo">${glyph(info)}</div><div class="val">${t.v}</div>`;
   }
   function place(t){
     const p = pos(t.r,t.c);
@@ -373,7 +487,7 @@
     chainEl.innerHTML = '';
     CHAIN.forEach((c,i)=>{
       if(i>0){ const a = document.createElement('span'); a.className = 'arrow'; a.textContent = '›'; chainEl.appendChild(a); }
-      const s = document.createElement('span'); s.className = 'step'; s.textContent = c.emoji; s.title = c.v; s.dataset.v = c.v;
+      const s = document.createElement('span'); s.className = 'step'; s.innerHTML = glyph(c); s.title = c.v; s.dataset.v = c.v;
       chainEl.appendChild(s);
     });
   }
@@ -510,6 +624,8 @@
       <div class="btnrow"><button class="btn" id="againBtn">Play Again</button></div>`;
     overlay.classList.add('show');
     $('againBtn').onclick = startGame;
+    const tip = window.TeaSupport && TeaSupport.button('btn alt');
+    if(tip) overlay.querySelector('.btnrow').appendChild(tip);
     if(window.TeaLB && TeaLB.enabled){
       const rb = document.createElement('button'); rb.className = 'btn alt'; rb.textContent = '🏆 Ranks';
       overlay.querySelector('.btnrow').appendChild(rb); rb.onclick = ()=>TeaLB.open();
@@ -562,7 +678,9 @@
 
   window.__tf = { move, tiles:()=>tiles.map(t=>({v:t.v,r:t.r,c:t.c})), get state(){return state;}, get score(){return score;},
     setBoard(list){ clearTiles(); list.forEach(([v,r,c])=>makeTile(v,r,c,false)); updateChain(); state='playing'; overlay.classList.remove('show'); } };
+  TeaSprites.onReady(()=>{ try{ tiles.forEach(paint); buildChain(); updateChain(); }catch(e){} });
 })();
 </script>
+<!--PWA-SW--><script>if("serviceWorker" in navigator && location.protocol.indexOf("http")===0)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})});</script><!--/PWA-SW-->
 </body>
 </html>

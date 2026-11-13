@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spin Wheel Picker</title>
+<style>
+  :root { --bg:#0c1220; --card:#151d33; --card2:#1c2744; --line:rgba(255,255,255,0.09); --txt:#e8eefc; --mut:#8fa0c9; --acc:#ffcf4d; --acc2:#ff9a3d; --ok:#6dff9a; --bad:#ff6b6b; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { background:var(--bg); color:var(--txt); font-family:'Segoe UI', system-ui, sans-serif; min-height:100%; }
+  body { padding:16px; }
+  h1 { font-size:22px; color:var(--acc); margin-bottom:2px; }
+  .tag { color:var(--mut); font-size:13px; margin-bottom:14px; }
+  #app { display:grid; grid-template-columns:minmax(300px,380px) 1fr; gap:16px; max-width:1100px; margin:0 auto; align-items:start; }
+  @media (max-width:820px){ #app { grid-template-columns:1fr; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:14px; }
+  .card h2 { font-size:13px; letter-spacing:1px; color:var(--mut); margin-bottom:10px; text-transform:uppercase; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  button, .filebtn {
+    background:linear-gradient(#ffae52,#e8722a); color:#fff; border:none; font-weight:700; font-size:13px;
+    padding:9px 16px; border-radius:20px; cursor:pointer; box-shadow:0 3px 0 #a84e14;
+  }
+  button:active { transform:translateY(2px); box-shadow:0 1px 0 #a84e14; }
+  button.alt, .filebtn.alt { background:linear-gradient(#5b6a95,#3e4b73); box-shadow:0 3px 0 #262f4d; }
+  button:disabled { opacity:0.45; cursor:not-allowed; }
+  input[type=file] { display:none; }
+  #drop { border:2px dashed rgba(255,255,255,0.18); border-radius:10px; padding:14px; text-align:center; color:var(--mut); font-size:13px; margin-bottom:10px; transition:background .15s, border-color .15s; }
+  #drop.over { background:rgba(255,207,77,0.08); border-color:var(--acc); }
+  select { background:var(--card2); color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:6px 8px; font-size:13px; max-width:100%; }
+  label.opt { display:flex; gap:9px; align-items:flex-start; padding:8px 10px; border-radius:8px; background:var(--card2); margin-bottom:6px; font-size:13px; cursor:pointer; line-height:1.35; }
+  label.opt input { margin-top:2px; accent-color:var(--acc2); }
+  label.opt small { display:block; color:var(--mut); font-size:11.5px; margin-top:1px; }
+  .subhead { font-size:12px; color:var(--mut); margin:10px 0 6px; }
+  #msg { font-size:12.5px; color:var(--mut); min-height:18px; margin-top:6px; }
+  #msg.err { color:var(--bad); }
+  #msg.ok { color:var(--ok); }
+  /* wheel */
+  #wheelCard { text-align:center; position:relative; }
+  #wheelBox { position:relative; width:min(92vw,480px); margin:0 auto; }
+  canvas#wheel { width:100%; height:auto; display:block; }
+  #pointer { position:absolute; top:-6px; left:50%; transform:translateX(-50%); width:0; height:0;
+    border-left:14px solid transparent; border-right:14px solid transparent; border-top:30px solid var(--acc);
+    filter:drop-shadow(0 3px 3px rgba(0,0,0,0.6)); z-index:3; }
+  #spinBtn { margin-top:14px; font-size:17px; padding:13px 44px; border-radius:30px; box-shadow:0 5px 0 #a84e14, 0 8px 14px rgba(0,0,0,0.4); }
+  #status { margin-top:10px; font-size:13px; color:var(--mut); min-height:20px; }
+  #status b { color:var(--acc); }
+  #notice { margin-top:6px; font-size:12.5px; color:#ffb15c; min-height:18px; }
+  #result { display:none; margin-top:12px; background:linear-gradient(160deg,#243256,#1a2444); border:1px solid rgba(255,207,77,0.5); border-radius:12px; padding:14px; animation:pop .35s ease; }
+  #result .big { font-size:clamp(24px,6vw,34px); font-weight:900; color:var(--acc); word-break:break-word; }
+  #result .small { font-size:12px; color:var(--mut); margin-bottom:4px; letter-spacing:1px; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; margin-top:8px; }
+  .chip { background:rgba(255,255,255,0.09); border-radius:14px; padding:3px 10px; font-size:12px; }
+  .chip i { color:var(--mut); font-style:normal; margin-right:4px; }
+  @keyframes pop { 0%{ transform:scale(0.85); opacity:0; } 100%{ transform:scale(1); opacity:1; } }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  th, td { text-align:left; padding:5px 6px; border-bottom:1px solid var(--line); }
+  th { color:var(--mut); font-weight:600; position:sticky; top:0; background:var(--card); }
+  .scroll { max-height:240px; overflow:auto; border-radius:8px; }
+  .st-picked { color:var(--mut); }
+  .st-blocked { color:#ffb15c; }
+  .st-ok { color:var(--ok); }
+  details summary { cursor:pointer; color:var(--mut); font-size:13px; margin-bottom:8px; }
+  .toggle { font-size:12px; color:var(--mut); display:flex; gap:6px; align-items:center; justify-content:center; margin-top:8px; }
+  .toggle { gap:16px; flex-wrap:wrap; }
+  .toggle label { display:flex; gap:5px; align-items:center; cursor:pointer; }
+  /* live name under the pointer */
+  #live { margin:0 auto 10px; min-height:34px; max-width:min(92vw,480px); padding:5px 16px; border-radius:20px;
+    background:var(--card2); border:1px solid var(--line); font-weight:800; font-size:18px; color:#fff;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.6; }
+  #live:empty { visibility:hidden; }
+  #live.won { color:#1a1a2e; background:linear-gradient(90deg,#ffcf4d,#ff9a3d); border-color:transparent; animation:pop .35s ease; }
+  /* winner pop-up */
+  #winModal { position:fixed; inset:0; display:none; align-items:center; justify-content:center; padding:16px;
+    background:rgba(5,8,18,0.74); backdrop-filter:blur(3px); z-index:50; }
+  #winModal.show { display:flex; animation:fade .25s ease; }
+  #winCard { background:linear-gradient(160deg,#27386a,#171f3d); border:2px solid var(--acc); border-radius:20px;
+    padding:26px 30px 22px; text-align:center; max-width:min(92vw,580px); box-shadow:0 0 70px rgba(255,207,77,0.35);
+    animation:zoomIn .55s cubic-bezier(.2,1.4,.4,1); }
+  .wm-small { font-size:12px; letter-spacing:3px; color:var(--mut); }
+  .wm-crown { font-size:48px; animation:bounce 1s ease-in-out infinite; }
+  .wm-name { font-size:clamp(30px,9vw,60px); font-weight:900; color:#fff; word-break:break-word; min-height:1.2em; opacity:0.75; }
+  .wm-name.locked { color:var(--acc); opacity:1; text-shadow:0 0 26px rgba(255,207,77,0.55); animation:lock .45s cubic-bezier(.2,1.6,.4,1); }
+  #confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:60; }
+  @keyframes fade { from{opacity:0;} to{opacity:1;} }
+  @keyframes zoomIn { 0%{ transform:scale(0.3) rotate(-6deg); opacity:0; } 100%{ transform:scale(1) rotate(0); opacity:1; } }
+  @keyframes bounce { 0%,100%{ transform:translateY(0) scale(1); } 50%{ transform:translateY(-8px) scale(1.08); } }
+  @keyframes lock { 0%{ transform:scale(1.35); } 100%{ transform:scale(1); } }
+</style>
+<!--PWA-HEAD--><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#1c120b"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><!--/PWA-HEAD-->
+</head>
+<body>
+<div style="max-width:1100px;margin:0 auto">
+  <h1>🎡 Spin Wheel Picker</h1>
+  <div class="tag">Load an Excel / CSV list of people, set your rules, then spin. Everything stays in your browser — nothing is uploaded.</div>
+</div>
+<div id="app">
+  <div id="left">
+    <div class="card">
+      <h2>1 · Load people</h2>
+      <div id="drop">Drop an <b>.xlsx / .xls / .csv</b> file here<br>or use the buttons below</div>
+      <div class="row">
+        <label class="filebtn" for="file">Choose file</label>
+        <input type="file" id="file" accept=".xlsx,.xls,.csv,.txt">
+        <button class="alt" id="sampleBtn">Try sample data</button>
+        <button class="alt" id="templateBtn">Template</button>
+      </div>
+      <div id="msg">First row = headers. One column holds the names; the other columns are the categories (Team, Department, Gender…).</div>
+      <div id="sheetRow" style="display:none;margin-top:10px">
+        <div class="subhead">Sheet</div><select id="sheetSel"></select>
+      </div>
+      <div id="nameRow" style="display:none;margin-top:10px">
+        <div class="subhead">Name column</div><select id="nameSel"></select>
+      </div>
+    </div>
+
+    <div class="card" id="rulesCard" style="display:none">
+      <h2>2 · Rules</h2>
+      <div class="subhead" style="margin-top:0">Already-picked people</div>
+      <label class="opt"><input type="radio" name="reinc" value="out" checked>
+        <span>Take them out of the wheel<small>Everybody gets picked once, then the round is complete.</small></span></label>
+      <label class="opt"><input type="radio" name="reinc" value="in">
+        <span>Put them back every turn<small>Fully random each turn — the same person can come up again.</small></span></label>
+      <div class="subhead">Categories — don't pick the same value twice in a row</div>
+      <div id="catRules"></div>
+      <div class="subhead" style="font-size:11.5px">e.g. tick "Team" and nobody from the same Team as the last winner can be picked next turn.</div>
+    </div>
+
+    <div class="card" id="peopleCard" style="display:none">
+      <details>
+        <summary id="peopleSummary">People</summary>
+        <div class="scroll"><table id="peopleTable"></table></div>
+      </details>
+    </div>
+  </div>
+
+  <div id="right">
+    <div class="card" id="wheelCard">
+      <div id="live"></div>
+      <div id="wheelBox"><div id="pointer"></div><canvas id="wheel" width="960" height="960"></canvas></div>
+      <button id="spinBtn" disabled>SPIN</button>
+      <div id="status">Load a list to begin.</div>
+      <div id="notice"></div>
+      <div id="result"></div>
+      <div class="toggle">
+        <label><input type="checkbox" id="soundChk" checked> 🔊 sound</label>
+        <label><input type="checkbox" id="popupChk" checked> winner pop-up</label>
+        <label><input type="checkbox" id="speakChk"> read name aloud</label>
+      </div>
+    </div>
+
+    <div class="card" id="historyCard" style="display:none">
+      <h2>History</h2>
+      <div class="scroll"><table id="historyTable"></table></div>
+      <div class="row" style="margin-top:10px">
+        <button class="alt" id="newRoundBtn">New round</button>
+        <button class="alt" id="csvBtn">Download history (CSV)</button>
+        <button class="alt" id="clearBtn">Clear history</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="winModal" role="dialog" aria-modal="true" aria-label="Winner">
+  <div id="winCard">
+    <div class="wm-small" id="wmTurn"></div>
+    <div class="wm-crown">🎉</div>
+    <div class="wm-name" id="wmName"></div>
+    <div class="chips" id="wmChips"></div>
+    <div class="row" style="justify-content:center;margin-top:18px">
+      <button id="wmAgain">Spin again</button>
+      <button class="alt" id="wmClose">Close</button>
+    </div>
+  </div>
+</div>
+<canvas id="confetti"></canvas>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+(function(){
+  const $ = id=>document.getElementById(id);
+  const TAU = Math.PI*2;
+  const canvas = $('wheel'), ctx = canvas.getContext('2d');
+
+  let headers = [], rows = [], wb = null, nameCol = 0;
+  let people = [];            // {id, name, cats:{col:value}, times}
+  let catCols = [];           // category column names
+  let catRule = {};           // col -> bool (no consecutive repeat)
+  let picked = new Set();     // ids picked this round
+  let history = [];           // {turn, name, cats}
+  let lastWinner = null;
+  let wheelPeople = [];       // currently displayed on wheel
+  let rot = 0, spinning = false, audioCtx = null, master = null, lastTickAt = 0;
+  let hiIdx = -1, pulseRAF = 0, shuffleTimer = 0, revealTimer = 0, pendingReveal = null;
+  let confetti = [], cfRAF = 0;
+
+  /* ---------- helpers ---------- */
+  const norm = v => String(v==null?'':v).trim();
+  const key  = v => norm(v).toLowerCase();
+  function setMsg(t, cls){ const m = $('msg'); m.textContent = t; m.className = cls||''; }
+  function randInt(n){
+    if(window.crypto && crypto.getRandomValues){ const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % n; }
+    return Math.floor(Math.random()*n);
+  }
+  function randFloat(){ return randInt(1e9)/1e9; }
+
+  /* ---------- file loading ---------- */
+  function parseCSV(text){
+    const out = []; let row = [], cur = '', q = false;
+    if(text.charCodeAt(0)===0xFEFF) text = text.slice(1);
+    for(let i=0;i<text.length;i++){
+      const ch = text[i];
+      if(q){
+        if(ch==='"'){ if(text[i+1]==='"'){ cur+='"'; i++; } else q = false; } else cur += ch;
+      } else if(ch==='"') q = true;
+      else if(ch===',' || ch==='\t' || ch===';'){ row.push(cur); cur=''; }
+      else if(ch==='\n' || ch==='\r'){ if(ch==='\r' && text[i+1]==='\n') i++; row.push(cur); out.push(row); row=[]; cur=''; }
+      else cur += ch;
+    }
+    if(cur!=='' || row.length){ row.push(cur); out.push(row); }
+    return out;
+  }
+
+  async function handleFile(file){
+    if(!file) return;
+    const ext = file.name.split('.').pop().toLowerCase();
+    try{
+      if(ext==='csv' || ext==='txt'){
+        const text = await file.text();
+        wb = null; $('sheetRow').style.display = 'none';
+        loadRows(parseCSV(text), file.name);
+      } else {
+        if(typeof XLSX==='undefined') throw new Error('The Excel reader could not be loaded (no internet?). Save the sheet as CSV and load that instead.');
+        const buf = await file.arrayBuffer();
+        wb = XLSX.read(buf, {type:'array'});
+        const sel = $('sheetSel'); sel.innerHTML = '';
+        wb.SheetNames.forEach((n,i)=>{ const o = document.createElement('option'); o.value = i; o.textContent = n; sel.appendChild(o); });
+        $('sheetRow').style.display = wb.SheetNames.length>1 ? 'block' : 'none';
+        loadSheet(0, file.name);
+      }
+    }catch(err){ setMsg('Could not read file: '+err.message, 'err'); }
+  }
+  function loadSheet(i, fname){
+    const ws = wb.Sheets[wb.SheetNames[i]];
+    const data = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false});
+    loadRows(data, fname || wb.SheetNames[i]);
+  }
+
+  function loadRows(data, label){
+    data = data.filter(r=>r.some(c=>norm(c)!==''));
+    if(data.length<2) throw new Error('Need a header row and at least one person.');
+    headers = data[0].map((h,i)=> norm(h) || ('Column '+(i+1)));
+    rows = data.slice(1);
+    // name column guess
+    const guess = headers.findIndex(h=>/^(name|names|person|people|member|employee|student|participant|full name)$/i.test(h));
+    nameCol = guess>=0 ? guess : 0;
+    const ns = $('nameSel'); ns.innerHTML = '';
+    headers.forEach((h,i)=>{ const o = document.createElement('option'); o.value = i; o.textContent = h; ns.appendChild(o); });
+    ns.value = nameCol; $('nameRow').style.display = 'block';
+    buildPeople(true);
+    setMsg(`Loaded ${people.length} people from "${label}".`, 'ok');
+  }
+
+  function buildPeople(resetRules){
+    catCols = headers.map((h,i)=>({h,i})).filter(x=>x.i!==nameCol)
+      .filter(x=>rows.some(r=>norm(r[x.i])!=='')).map(x=>x);
+    people = [];
+    rows.forEach(r=>{
+      const nm = norm(r[nameCol]); if(!nm) return;
+      const cats = {}; catCols.forEach(c=>cats[c.h] = norm(r[c.i]));
+      people.push({id:people.length, name:nm, cats, times:0});
+    });
+    if(resetRules){
+      catRule = {}; catCols.forEach(c=>catRule[c.h] = false);
+    } else {
+      const old = catRule; catRule = {}; catCols.forEach(c=>catRule[c.h] = !!old[c.h]);
+    }
+    renderCatRules();
+    resetRound(true);
+    $('rulesCard').style.display = 'block';
+    $('peopleCard').style.display = 'block';
+    $('historyCard').style.display = 'block';
+  }
+
+  function renderCatRules(){
+    const box = $('catRules'); box.innerHTML = '';
+    if(!catCols.length){ box.innerHTML = '<div class="subhead">No category columns found — only names.</div>'; return; }
+    catCols.forEach(c=>{
+      const uniq = new Set(people.map(p=>key(p.cats[c.h])).filter(Boolean)).size;
+      const lab = document.createElement('label'); lab.className = 'opt';
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!catRule[c.h];
+      cb.onchange = ()=>{ catRule[c.h] = cb.checked; refreshWheel(); };
+      const sp = document.createElement('span');
+      sp.innerHTML = `Don't repeat <b></b><small>${uniq} different value${uniq===1?'':'s'}</small>`;
+      sp.querySelector('b').textContent = c.h;
+      lab.appendChild(cb); lab.appendChild(sp); box.appendChild(lab);
+    });
+  }
+
+  /* ---------- eligibility ---------- */
+  function reincludeMode(){ return document.querySelector('input[name=reinc]:checked').value==='in'; }
+
+  function computePool(){
+    let pool = people.filter(p=> reincludeMode() || !picked.has(p.id));
+    let relaxed = false;
+    if(lastWinner && pool.length){
+      const activeCols = catCols.filter(c=>catRule[c.h]);
+      const blocked = p=> activeCols.some(c=>{ const v = key(p.cats[c.h]); return v && v===key(lastWinner.cats[c.h]); });
+      const allowed = pool.filter(p=>!blocked(p));
+      if(allowed.length) pool = allowed; else if(activeCols.length) relaxed = true;
+    }
+    return {pool, relaxed, roundDone: !reincludeMode() && people.length>0 && people.every(p=>picked.has(p.id))};
+  }
+
+  function refreshWheel(keep){
+    const {pool, relaxed, roundDone} = computePool();
+    if(!keep){ hiIdx = -1; wheelPeople = pool; drawWheel(); }
+    $('notice').textContent = relaxed ? 'Heads-up: everyone left shares a category with the last pick, so the "don\'t repeat" rule is relaxed for this spin.' : '';
+    const st = $('status');
+    if(!people.length){ st.textContent = 'Load a list to begin.'; }
+    else if(roundDone){ st.innerHTML = `<b>Round complete!</b> Everyone has been picked. Start a new round to go again.`; }
+    else { st.innerHTML = `<b>${pool.length}</b> on the wheel · ${picked.size} picked this round · ${people.length} total`; }
+    $('spinBtn').disabled = spinning || !pool.length;
+    renderPeopleTable(pool);
+    renderHistory();
+  }
+
+  function renderPeopleTable(pool){
+    const inPool = new Set(pool.map(p=>p.id));
+    $('peopleSummary').textContent = `People (${people.length}) — click to view status`;
+    const t = $('peopleTable');
+    let h = '<tr><th>Name</th>'+catCols.map(c=>`<th>${esc(c.h)}</th>`).join('')+'<th>Status</th></tr>';
+    people.forEach(p=>{
+      let s, cls;
+      if(!reincludeMode() && picked.has(p.id)){ s = 'picked'; cls='st-picked'; }
+      else if(!inPool.has(p.id)){ s = 'skipped (same category)'; cls='st-blocked'; }
+      else { s = 'on wheel'; cls='st-ok'; }
+      if(p.times) s += ` · ×${p.times}`;
+      h += `<tr><td>${esc(p.name)}</td>`+catCols.map(c=>`<td>${esc(p.cats[c.h])}</td>`).join('')+`<td class="${cls}">${s}</td></tr>`;
+    });
+    t.innerHTML = h;
+  }
+  function renderHistory(){
+    const t = $('historyTable');
+    let h = '<tr><th>#</th><th>Name</th>'+catCols.map(c=>`<th>${esc(c.h)}</th>`).join('')+'</tr>';
+    for(let i=history.length-1;i>=0;i--){
+      const e = history[i];
+      h += `<tr><td>${e.turn}</td><td>${esc(e.name)}</td>`+catCols.map(c=>`<td>${esc(e.cats[c.h]||'')}</td>`).join('')+'</tr>';
+    }
+    t.innerHTML = history.length ? h : '<tr><td style="color:var(--mut)">No spins yet.</td></tr>';
+  }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  /* ---------- wheel drawing ---------- */
+  function drawWheel(){
+    const W = canvas.width, cx = W/2, cy = W/2, R = W/2 - 14;
+    ctx.clearRect(0,0,W,W);
+    // rim
+    ctx.beginPath(); ctx.arc(cx,cy,R+10,0,TAU); ctx.fillStyle = '#2a355a'; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx,cy,R+4,0,TAU); ctx.fillStyle = '#0f1630'; ctx.fill();
+
+    const n = wheelPeople.length;
+    if(!n){
+      ctx.beginPath(); ctx.arc(cx,cy,R,0,TAU); ctx.fillStyle = '#1c2744'; ctx.fill();
+      ctx.fillStyle = '#8fa0c9'; ctx.font = '600 36px Segoe UI, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(people.length ? 'No one left on the wheel' : 'Load a list to begin', cx, cy);
+      return;
+    }
+    const seg = TAU/n;
+    ctx.save(); ctx.translate(cx,cy); ctx.rotate(rot);
+    for(let i=0;i<n;i++){
+      const a0 = i*seg, a1 = (i+1)*seg;
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0,0,R,a0,a1); ctx.closePath();
+      const hue = (i*137.508) % 360;
+      ctx.fillStyle = `hsl(${hue},68%,${52 + (i%2?4:-2)}%)`;
+      ctx.fill();
+      if(n<=150){ ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = n>60?1:2; ctx.stroke(); }
+    }
+    // labels
+    const arcLen = R*seg;
+    const fs = Math.min(34, Math.floor(arcLen*0.62));
+    if(fs>=9){
+      ctx.font = `700 ${fs}px Segoe UI, sans-serif`; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      const maxW = R*0.78;
+      for(let i=0;i<n;i++){
+        ctx.save(); ctx.rotate((i+0.5)*seg);
+        let label = wheelPeople[i].name;
+        if(ctx.measureText(label).width>maxW){
+          while(label.length>2 && ctx.measureText(label+'…').width>maxW) label = label.slice(0,-1);
+          label += '…';
+        }
+        ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillText(label, R-17, 1.5);
+        ctx.fillStyle = '#fff'; ctx.fillText(label, R-18, 0);
+        ctx.restore();
+      }
+    }
+    // winner highlight: dim everyone else, glow the winning slice
+    if(hiIdx>=0 && hiIdx<n){
+      ctx.fillStyle = 'rgba(8,12,24,0.64)';
+      for(let i=0;i<n;i++){
+        if(i===hiIdx) continue;
+        ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0,0,R,i*seg,(i+1)*seg); ctx.closePath(); ctx.fill();
+      }
+      const pulse = 0.5 + 0.5*Math.sin(performance.now()/160);
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0,0,R,hiIdx*seg,(hiIdx+1)*seg); ctx.closePath();
+      ctx.shadowColor = '#ffcf4d'; ctx.shadowBlur = 24 + 36*pulse;
+      ctx.lineWidth = 8; ctx.strokeStyle = '#ffffff'; ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+    ctx.restore();
+    // hub
+    ctx.beginPath(); ctx.arc(cx,cy,34,0,TAU); ctx.fillStyle = '#0f1630'; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx,cy,26,0,TAU); ctx.fillStyle = '#ffcf4d'; ctx.fill();
+    ctx.fillStyle = '#a84e14'; ctx.font = '700 22px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('★', cx, cy+1);
+  }
+
+  /* ---------- sound ---------- */
+  function ensureAudio(){
+    if(!audioCtx){
+      try{
+        audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+        master = audioCtx.createGain(); master.gain.value = 0.9; master.connect(audioCtx.destination);
+      }catch(e){}
+    }
+    if(audioCtx && audioCtx.state==='suspended') audioCtx.resume();
+  }
+  function soundOn(){ return !!audioCtx && $('soundChk').checked; }
+  function tone(freq, start, dur, vol, type){
+    const t = audioCtx.currentTime + start;
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = type||'sine'; o.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t+0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t+dur+0.03);
+  }
+  // wooden "peg" click; pitch rises as the wheel slows down for a bit of suspense
+  function tickSound(pitch){
+    if(!soundOn()) return;
+    const now = performance.now(); if(now-lastTickAt < 22) return; lastTickAt = now;
+    tone(pitch||900, 0, 0.055, 0.18, 'triangle');
+  }
+  function whoosh(){
+    if(!soundOn()) return;
+    const len = Math.floor(audioCtx.sampleRate*0.7), buf = audioCtx.createBuffer(1,len,audioCtx.sampleRate), d = buf.getChannelData(0);
+    for(let i=0;i<len;i++) d[i] = (Math.random()*2-1)*(1-i/len);
+    const src = audioCtx.createBufferSource(); src.buffer = buf;
+    const f = audioCtx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.2;
+    f.frequency.setValueAtTime(300, audioCtx.currentTime); f.frequency.exponentialRampToValueAtTime(3200, audioCtx.currentTime+0.6);
+    const g = audioCtx.createGain(); g.gain.value = 0.28;
+    src.connect(f); f.connect(g); g.connect(master); src.start();
+  }
+  function fanfare(){
+    if(!soundOn()) return;
+    const notes = [523.25, 659.25, 783.99, 1046.5];
+    notes.forEach((f,i)=>{ tone(f, i*0.12, 0.28, 0.22, 'triangle'); tone(f*2, i*0.12, 0.2, 0.06, 'sine'); });
+    notes.forEach(f=>tone(f, 0.55, 1.1, 0.15, 'triangle'));
+    tone(2093, 0.6, 0.55, 0.05, 'sine');
+  }
+
+  /* ---------- spin ---------- */
+  function spin(){
+    if(spinning) return;
+    const {pool, relaxed} = computePool();
+    if(!pool.length) return;
+    ensureAudio();
+    wheelPeople = pool; drawWheel();
+    $('notice').textContent = relaxed ? 'Heads-up: everyone left shares a category with the last pick, so the "don\'t repeat" rule is relaxed for this spin.' : '';
+    $('result').style.display = 'none';
+    hideWinner(); whoosh();
+    $('live').classList.remove('won');
+    spinning = true; $('spinBtn').disabled = true;
+
+    const n = pool.length, seg = TAU/n;
+    const idx = randInt(n);                                  // the real winner, decided up front
+    const within = 0.12 + 0.76*randFloat();                  // where inside the slice the pointer rests
+    const a = (idx+within)*seg;
+    const finalRot = ((1.5*Math.PI - a) % TAU + TAU) % TAU;  // pointer sits at the top (3π/2)
+    const startRot = rot;
+    const delta = (((finalRot - startRot) % TAU) + TAU) % TAU + TAU*(9 + randInt(4));
+    const dur = 8000 + randInt(2500);
+    const t0 = performance.now();
+    let lastIdx = -1;
+
+    function frame(now){
+      const t = Math.min(1, (now-t0)/dur);
+      const e = 1 - Math.pow(1-t, 4);                        // ease-out quart
+      rot = startRot + delta*e;
+      drawWheel();
+      const cur = Math.min(n-1, Math.floor((((1.5*Math.PI - rot) % TAU) + TAU) % TAU / seg));
+      if(cur!==lastIdx){
+        if(lastIdx!==-1) tickSound(600 + 900*(1-Math.pow(1-t,3)));
+        $('live').textContent = pool[cur].name;
+        lastIdx = cur;
+      }
+      if(t<1) requestAnimationFrame(frame); else finish(pool[idx]);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function finish(p){
+    spinning = false;
+    rot = ((rot % TAU) + TAU) % TAU;
+    // sanity check: the slice under the pointer must be the person we announce
+    const under = wheelPeople[Math.floor((((1.5*Math.PI - rot) % TAU) + TAU) % TAU / (TAU/wheelPeople.length))];
+    window.__wheelLandedOk = (under===p);
+    picked.add(p.id); p.times++;
+    lastWinner = p;
+    history.push({turn: history.length+1, name: p.name, cats: p.cats});
+    const idx = wheelPeople.indexOf(p);
+    refreshWheel(true);            // update status/history/table, but keep the wheel as it was
+    announceWinner(p, idx);
+  }
+
+  /* ---------- winner reveal ---------- */
+  function pulseLoop(){
+    if(hiIdx<0){ pulseRAF = 0; return; }
+    drawWheel();
+    pulseRAF = requestAnimationFrame(pulseLoop);
+  }
+
+  function announceWinner(p, idx){
+    hiIdx = idx;
+    if(!pulseRAF) pulseRAF = requestAnimationFrame(pulseLoop);
+    const chips = catCols.filter(c=>p.cats[c.h]).map(c=>`<span class="chip"><i>${esc(c.h)}</i>${esc(p.cats[c.h])}</span>`).join('');
+    const reveal = quiet=>{
+      pendingReveal = null;
+      $('wmName').textContent = p.name; $('wmName').classList.add('locked'); $('wmChips').innerHTML = chips;
+      const r = $('result');
+      r.innerHTML = `<div class="small">TURN ${history.length} · SELECTED</div><div class="big">${esc(p.name)}</div><div class="chips">${chips}</div>`;
+      r.style.display = 'block';
+      const live = $('live'); live.textContent = p.name; live.classList.add('won');
+      if(quiet) return;
+      fanfare(); launchConfetti();
+      if($('speakChk').checked && window.speechSynthesis){
+        try{ speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(p.name)); }catch(e){}
+      }
+    };
+    if(!$('popupChk').checked){ reveal(false); return; }
+
+    pendingReveal = reveal;
+    $('wmTurn').textContent = `TURN ${history.length} · AND THE WINNER IS…`;
+    $('wmChips').innerHTML = '';
+    $('wmName').classList.remove('locked');
+    $('winModal').classList.add('show');
+    const names = people.map(x=>x.name); let k = 0;
+    shuffleTimer = setInterval(()=>{
+      $('wmName').textContent = names[randInt(names.length)];
+      tickSound(800 + (k++ % 6)*110);
+    }, 70);
+    revealTimer = setTimeout(()=>{ clearInterval(shuffleTimer); reveal(false); }, 1100);
+  }
+
+  function hideWinner(){
+    $('winModal').classList.remove('show');
+    clearInterval(shuffleTimer); clearTimeout(revealTimer);
+    if(pendingReveal){ const f = pendingReveal; pendingReveal = null; f(true); }
+    hiIdx = -1; confetti = [];
+    try{ if(window.speechSynthesis) speechSynthesis.cancel(); }catch(e){}
+  }
+  function dismissWinner(){ hideWinner(); refreshWheel(); }
+
+  /* ---------- confetti ---------- */
+  const cf = $('confetti'), cctx = cf.getContext('2d');
+  function sizeConfetti(){ cf.width = window.innerWidth; cf.height = window.innerHeight; }
+  window.addEventListener('resize', sizeConfetti); sizeConfetti();
+
+  function launchConfetti(){
+    if(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const W = cf.width, H = cf.height, k = Math.max(0.6, Math.min(1.4, H/800));
+    const cols = ['#ffcf4d','#ff6b6b','#6dff9a','#7fd8ff','#c99bff','#ff9a3d','#ffffff'], emo = ['🍵','🥟','🍡','🍙','⭐'];
+    const add = (x,y,ang,sp,g)=>confetti.push({
+      x, y, vx:Math.cos(ang)*sp, vy:Math.sin(ang)*sp, g, rot:randFloat()*TAU, vr:(randFloat()-0.5)*0.4,
+      s:6+randFloat()*7, c:cols[randInt(cols.length)], e:randFloat()<0.14 ? emo[randInt(emo.length)] : null,
+      t:0, max:200+randInt(120)
+    });
+    for(let i=0;i<90;i++){
+      add(0, H, -Math.PI*(0.12+0.30*randFloat()), (12+14*randFloat())*k, 0.35*k);       // left cannon, aims up-right
+      add(W, H, -Math.PI*(0.58+0.30*randFloat()), (12+14*randFloat())*k, 0.35*k);       // right cannon, aims up-left
+    }
+    for(let i=0;i<70;i++) add(randFloat()*W, -20-randFloat()*H*0.3, Math.PI/2, 2+randFloat()*3, 0.06*k); // light rain
+    if(!cfRAF) cfRAF = requestAnimationFrame(cfLoop);
+  }
+  function cfLoop(){
+    cctx.clearRect(0,0,cf.width,cf.height);
+    confetti.forEach(p=>{
+      p.t++; p.vx *= 0.992; p.vy = p.vy*0.992 + p.g; p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+      const a = Math.min(1,(p.max-p.t)/40); if(a<=0) return;
+      cctx.save(); cctx.globalAlpha = a; cctx.translate(p.x,p.y); cctx.rotate(p.rot);
+      if(p.e){ cctx.font = (p.s*2.2)+'px serif'; cctx.textAlign = 'center'; cctx.textBaseline = 'middle'; cctx.fillText(p.e,0,0); }
+      else { cctx.fillStyle = p.c; cctx.fillRect(-p.s/2,-p.s/4,p.s,p.s/2); }
+      cctx.restore();
+    });
+    confetti = confetti.filter(p=>p.t<p.max && p.y<cf.height+40);
+    if(confetti.length) cfRAF = requestAnimationFrame(cfLoop); else { cfRAF = 0; cctx.clearRect(0,0,cf.width,cf.height); }
+  }
+
+  function resetRound(full){
+    picked = new Set(); lastWinner = full ? null : lastWinner;
+    if(full){ history = []; people.forEach(p=>p.times=0); }
+    $('result').style.display = 'none';
+    refreshWheel();
+  }
+
+  /* ---------- sample + template + export ---------- */
+  const SAMPLE = [
+    ['Name','Team','Department','Level'],
+    ['Aung Aung','Alpha','Engineering','Senior'],['Su Su','Alpha','Design','Junior'],['Kyaw Zin','Beta','Engineering','Junior'],
+    ['Mya Mya','Beta','Sales','Senior'],['Htet Htet','Gamma','Sales','Junior'],['Zaw Min','Gamma','Engineering','Senior'],
+    ['Thida','Alpha','Sales','Senior'],['Nyein Chan','Beta','Design','Junior'],['Ei Ei','Gamma','Design','Senior'],
+    ['Min Thu','Alpha','Engineering','Junior'],['Khin Khin','Beta','Sales','Junior'],['Tun Tun','Gamma','Design','Junior'],
+  ];
+  function downloadBlob(name, blob){ const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 500); }
+  function toCSV(arr){ return arr.map(r=>r.map(c=>{ c = String(c==null?'':c); return /[",\n]/.test(c) ? '"'+c.replace(/"/g,'""')+'"' : c; }).join(',')).join('\r\n'); }
+
+  $('sampleBtn').onclick = ()=>{ wb = null; $('sheetRow').style.display = 'none'; try{ loadRows(SAMPLE.map(r=>r.slice()), 'sample data'); }catch(e){ setMsg(e.message,'err'); } };
+  $('templateBtn').onclick = ()=>{
+    if(typeof XLSX!=='undefined'){
+      const w = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(w, XLSX.utils.aoa_to_sheet(SAMPLE), 'People');
+      XLSX.writeFile(w, 'wheel-template.xlsx');
+    } else downloadBlob('wheel-template.csv', new Blob([toCSV(SAMPLE)], {type:'text/csv'}));
+  };
+  $('csvBtn').onclick = ()=>{
+    if(!history.length) return;
+    const head = ['Turn','Name', ...catCols.map(c=>c.h)];
+    const body = history.map(e=>[e.turn, e.name, ...catCols.map(c=>e.cats[c.h]||'')]);
+    downloadBlob('wheel-history.csv', new Blob([toCSV([head, ...body])], {type:'text/csv'}));
+  };
+
+  /* ---------- wiring ---------- */
+  $('file').onchange = e=>{ handleFile(e.target.files[0]); e.target.value = ''; };
+  const drop = $('drop');
+  ['dragenter','dragover'].forEach(ev=>document.addEventListener(ev, e=>{ e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave','drop'].forEach(ev=>document.addEventListener(ev, e=>{ e.preventDefault(); drop.classList.remove('over'); }));
+  document.addEventListener('drop', e=>{ if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
+  $('sheetSel').onchange = e=>{ try{ loadSheet(+e.target.value); setMsg(`Loaded ${people.length} people from sheet "${wb.SheetNames[+e.target.value]}".`,'ok'); }catch(err){ setMsg(err.message,'err'); } };
+  $('nameSel').onchange = e=>{ nameCol = +e.target.value; buildPeople(true); setMsg(`Using "${headers[nameCol]}" as the name column — ${people.length} people.`,'ok'); };
+  document.querySelectorAll('input[name=reinc]').forEach(r=>r.onchange = ()=>{ refreshWheel(); });
+  $('spinBtn').onclick = spin;
+  $('wmClose').onclick = dismissWinner;
+  $('wmAgain').onclick = ()=>{ hideWinner(); refreshWheel(); spin(); };
+  $('winModal').addEventListener('click', e=>{ if(e.target.id==='winModal') dismissWinner(); });
+  window.addEventListener('keydown', e=>{ if(e.key==='Escape' && $('winModal').classList.contains('show')) dismissWinner(); });
+  $('newRoundBtn').onclick = ()=>{ picked = new Set(); $('result').style.display = 'none'; refreshWheel(); };
+  $('clearBtn').onclick = ()=>{ history = []; picked = new Set(); lastWinner = null; people.forEach(p=>p.times=0); $('result').style.display = 'none'; refreshWheel(); };
+  window.addEventListener('keydown', e=>{ if(e.code==='Space' && !/INPUT|SELECT|BUTTON|TEXTAREA/.test(document.activeElement.tagName)){ e.preventDefault(); if(!$('spinBtn').disabled) spin(); } });
+
+  drawWheel();
+
+  window.__wheel = { get history(){return history;}, get pool(){return computePool().pool.map(p=>p.name);}, get people(){return people;}, spin, get spinning(){return spinning;} };
+})();
+</script>
+<!--PWA-SW--><script>if("serviceWorker" in navigator && location.protocol.indexOf("http")===0)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})});</script><!--/PWA-SW-->
+</body>
+</html>

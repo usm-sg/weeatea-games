@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1c120b">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<title>Photo Studio – We Eat Tea</title>
+<style>
+:root{--bg:#1c120b;--card:#2b1c11;--line:#4a3220;--ink:#fbeed8;--dim:#c9b79c;--acc:#e8a33d;--ok:#6fcf97}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,sans-serif;padding:16px 14px 90px}
+main{max-width:560px;margin:0 auto}
+h1{font-size:24px;margin:0 0 2px}
+.sub{color:var(--dim);font-size:14px;margin:0 0 12px;line-height:1.4}
+.note{background:#33220f;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13px;color:var(--dim);margin-bottom:14px;line-height:1.45}
+.note b{color:var(--ink)}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.slot{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:8px 6px 8px;text-align:center;cursor:pointer;position:relative;user-select:none}
+.slot.drag{border-color:var(--acc);background:#3a2615}
+.slot .pic{width:78px;height:78px;margin:0 auto 4px;border-radius:50%;background:#1c120b;border:2px dashed #5b4128;display:flex;align-items:center;justify-content:center;font-size:26px;color:#7d6445;overflow:hidden}
+.slot.has .pic{border:2px solid var(--acc);background:#000}
+.slot .pic img{width:100%;height:100%;display:block}
+.slot b{font-size:12px;display:block}
+.slot small{font-size:10.5px;color:var(--dim);display:block;line-height:1.25;min-height:26px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+button,.btn{font:inherit;font-size:14px;font-weight:700;border:0;border-radius:12px;padding:11px 14px;background:var(--acc);color:#2b1704;cursor:pointer}
+button.alt,.btn.alt{background:#3a2a1b;color:var(--ink);border:1px solid var(--line)}
+button.danger{background:#4a1f1a;color:#ffb4a8;border:1px solid #7a3328}
+button:disabled{opacity:.45}
+a.back{color:var(--acc);font-size:14px;text-decoration:none;display:inline-block;margin-bottom:10px}
+#status{position:fixed;left:0;right:0;bottom:0;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:#120a05;border-top:1px solid var(--line);font-size:13px;color:var(--dim);text-align:center}
+#status.ok{color:var(--ok)}
+/* editor */
+#ed{position:fixed;inset:0;background:rgba(10,6,3,.92);display:none;align-items:center;justify-content:center;padding:12px;z-index:10}
+#ed.show{display:flex}
+#edcard{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px;width:min(94vw,380px);max-height:96vh;overflow:auto}
+#edcard h2{margin:0 0 8px;font-size:17px}
+#cv{width:100%;aspect-ratio:1;border-radius:12px;background:#000;touch-action:none;display:block;cursor:grab}
+.ctl{display:flex;align-items:center;gap:10px;margin:10px 0;font-size:13px;color:var(--dim)}
+.ctl input[type=range]{flex:1}
+.seg{display:flex;gap:6px;margin:8px 0}
+.seg button{flex:1;padding:8px 6px;font-size:13px}
+.seg button.on{background:var(--acc);color:#2b1704}
+.hint{font-size:12px;color:var(--dim);margin:6px 0 0}
+</style></head><body>
+<main>
+  <a class="back" href="index.html">← Back to games</a>
+  <h1>📸 Photo Studio</h1>
+  <p class="sub">Turn your food photos into the pictures used inside Tea Strike, Tea Fusion and Tea Blocks.</p>
+  <div class="note"><b>Tap a circle</b> to choose a photo, then drag and zoom to crop it. Photos are saved on <b>this device only</b> and work offline. Empty circles keep the normal emoji. Circles 1–6 also appear in Tea Match, and all 12 in Tea Mahjong.<br>Please use only photos you took yourself or have permission to use.</div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="row">
+    <button id="bulk">＋ Add several photos</button>
+    <button class="alt" id="save">💾 Save pack file</button>
+    <button class="alt" id="share">📤 Share / email</button>
+    <button class="alt" id="load">📂 Load pack file</button>
+    <button class="danger" id="reset">Clear all</button>
+  </div>
+  <p class="sub" style="font-size:12.5px">A <b>pack file</b> (teapack.json) holds all your photos in one small file. Save it as a backup, send it to yourself, or load it on another device. Putting it next to the game files makes the games use those photos for everyone.</p>
+</main>
+
+<div id="status">Loading…</div>
+
+<div id="ed"><div id="edcard">
+  <h2 id="edtitle">Crop photo</h2>
+  <canvas id="cv" width="300" height="300"></canvas>
+  <div class="ctl"><span>Zoom</span><input type="range" id="zoom" min="1" max="4" step="0.01" value="1"></div>
+  <div class="seg" id="shape">
+    <button data-s="circle" class="on">Circle</button><button data-s="round">Rounded</button><button data-s="square">Square</button>
+  </div>
+  <div class="seg" id="ring"><button data-r="0" class="on">No border</button><button data-r="1">White border</button></div>
+  <p class="hint">Drag to move · pinch or slide to zoom</p>
+  <div class="row" style="margin:10px 0 0">
+    <button id="edok">Use this photo</button><button class="alt" id="edno">Cancel</button>
+  </div>
+</div></div>
+
+<input type="file" id="file" accept="image/*" hidden>
+<input type="file" id="filemulti" accept="image/*" multiple hidden>
+<input type="file" id="filepack" accept=".json,application/json" hidden>
+
+<script>
+(function(){
+  var N = 12, SIZE = 128;
+  var IDEAS = ['Mohinga','Tea leaf salad','Samosa','Shwe yin aye','Ohn no khao swe','Nan gyi thoke','Mont lin ma yar','Htamin jin','Shan noodles','Fried tofu','Mont let saung','Falooda'];
+  var USED = [
+    'Fusion 2 · Strike enemy · Blocks','Fusion 4 · Strike enemy · Blocks','Fusion 8 · Strike enemy · Blocks',
+    'Fusion 16 · Strike enemy · Blocks','Fusion 32 · Strike enemy · Blocks','Fusion 64 · Strike enemy · Blocks',
+    'Fusion 128 · Strike enemy · Blocks','Fusion 256 · Strike boss','Fusion 512 · Strike boss',
+    'Fusion 1024 · Strike boss','Fusion 2048 · Strike boss','Fusion 4096 · Strike boss'];
+  var $ = function(id){ return document.getElementById(id); };
+  var slots = {};            /* id -> {id, data, src} */
+  var statusEl = $('status');
+  function say(t, ok){ statusEl.textContent = t; statusEl.className = ok ? 'ok' : ''; }
+
+  /* ---------- storage ---------- */
+  var dbp = null;
+  function db(){
+    if(dbp) return dbp;
+    dbp = new Promise(function(res, rej){
+      if(!window.indexedDB) return rej(new Error('no storage'));
+      var r = indexedDB.open('tea-sprites', 1);
+      r.onupgradeneeded = function(){ r.result.createObjectStore('pack', { keyPath: 'id' }); };
+      r.onsuccess = function(){ res(r.result); };
+      r.onerror = function(){ rej(r.error); };
+    });
+    return dbp;
+  }
+  function tx(fn){
+    return db().then(function(d){
+      return new Promise(function(res, rej){
+        var t = d.transaction('pack', 'readwrite'), s = t.objectStore('pack');
+        fn(s); t.oncomplete = function(){ res(); }; t.onerror = function(){ rej(t.error); };
+      });
+    });
+  }
+  function loadAll(){
+    return db().then(function(d){
+      return new Promise(function(res, rej){
+        var q = d.transaction('pack').objectStore('pack').getAll();
+        q.onsuccess = function(){ res(q.result || []); }; q.onerror = function(){ rej(q.error); };
+      });
+    });
+  }
+  function put(item){ slots[item.id] = item; return tx(function(s){ s.put(item); }).then(function(){ say('Saved on this device ✓', true); }, function(){ say('Could not save here (private mode?). Use “Save pack file” to keep your photos.'); }); }
+  function del(id){ delete slots[id]; return tx(function(s){ s.delete(id); }); }
+
+  /* ---------- grid ---------- */
+  var grid = $('grid');
+  function render(){
+    grid.innerHTML = '';
+    for(var i = 0; i < N; i++){ (function(i){
+      var it = slots[i];
+      var d = document.createElement('div'); d.className = 'slot' + (it ? ' has' : ''); d.dataset.i = i;
+      var pic = document.createElement('div'); pic.className = 'pic';
+      if(it){ var im = new Image(); im.src = it.data; pic.appendChild(im); } else pic.textContent = '＋';
+      d.appendChild(pic);
+      var b = document.createElement('b'); b.textContent = '#' + (i + 1) + ' ' + (it ? '' : IDEAS[i]); d.appendChild(b);
+      var sm = document.createElement('small'); sm.textContent = USED[i]; d.appendChild(sm);
+      d.onclick = function(){ pick(i); };
+      d.ondragover = function(e){ e.preventDefault(); d.classList.add('drag'); };
+      d.ondragleave = function(){ d.classList.remove('drag'); };
+      d.ondrop = function(e){ e.preventDefault(); d.classList.remove('drag'); var f = e.dataTransfer.files && e.dataTransfer.files[0]; if(f) openEditor(i, f); };
+      grid.appendChild(d);
+    })(i); }
+  }
+
+  var target = 0;
+  function pick(i){
+    target = i;
+    var it = slots[i];
+    if(it && it.src){
+      /* filled slot: offer re-crop of the saved original, or a new photo */
+      if(confirm('Slot #' + (i + 1) + ' has a photo.\n\nOK = adjust the crop\nCancel = choose another photo')){
+        openEditorFromURL(i, it.src); return;
+      }
+    }
+    $('file').value = ''; $('file').click();
+  }
+  $('file').onchange = function(){ var f = this.files[0]; if(f) openEditor(target, f); };
+
+  /* ---------- editor ---------- */
+  var cv = $('cv'), cx = cv.getContext('2d');
+  var ed = { id: 0, img: null, w: 0, h: 0, scale: 1, base: 1, ox: 0, oy: 0, shape: 'circle', ring: 0, queue: [] };
+  function openEditor(id, file){
+    loadBitmap(file).then(function(img){ startEdit(id, img); }, function(){ say('That file could not be read as a photo.'); });
+  }
+  function openEditorFromURL(id, url){
+    var im = new Image(); im.onload = function(){ startEdit(id, im); }; im.src = url;
+  }
+  function loadBitmap(file){
+    if(window.createImageBitmap){
+      return createImageBitmap(file, { imageOrientation: 'from-image' }).catch(function(){ return viaImg(file); });
+    }
+    return viaImg(file);
+  }
+  function viaImg(file){
+    return new Promise(function(res, rej){
+      var u = URL.createObjectURL(file), im = new Image();
+      im.onload = function(){ res(im); }; im.onerror = rej; im.src = u;
+    });
+  }
+  function startEdit(id, img){
+    ed.id = id; ed.img = img; ed.w = img.width; ed.h = img.height;
+    ed.base = Math.max(cv.width / ed.w, cv.height / ed.h);   /* cover the square */
+    ed.scale = 1; ed.ox = 0; ed.oy = 0;
+    $('zoom').value = 1; $('edtitle').textContent = 'Slot #' + (id + 1) + ' — crop photo';
+    $('ed').classList.add('show'); draw();
+  }
+  function clamp(){
+    var w = ed.w * ed.base * ed.scale, h = ed.h * ed.base * ed.scale;
+    var mx = Math.max(0, (w - cv.width) / 2), my = Math.max(0, (h - cv.height) / 2);
+    ed.ox = Math.max(-mx, Math.min(mx, ed.ox)); ed.oy = Math.max(-my, Math.min(my, ed.oy));
+  }
+  function shapePath(g, S, r){
+    g.beginPath();
+    if(ed.shape === 'circle') g.arc(S / 2, S / 2, S / 2 - r, 0, Math.PI * 2);
+    else if(ed.shape === 'round'){
+      var x = r, y = r, w = S - 2 * r, h = S - 2 * r, k = S * 0.22;
+      g.moveTo(x + k, y); g.arcTo(x + w, y, x + w, y + h, k); g.arcTo(x + w, y + h, x, y + h, k); g.arcTo(x, y + h, x, y, k); g.arcTo(x, y, x + w, y, k); g.closePath();
+    } else g.rect(r, r, S - 2 * r, S - 2 * r);
+  }
+  function paint(g, S, ring){
+    var f = S / cv.width, w = ed.w * ed.base * ed.scale * f, h = ed.h * ed.base * ed.scale * f;
+    g.clearRect(0, 0, S, S);
+    g.save(); shapePath(g, S, ring ? S * 0.03 : 0); g.clip();
+    g.drawImage(ed.img, S / 2 + ed.ox * f - w / 2, S / 2 + ed.oy * f - h / 2, w, h);
+    g.restore();
+    if(ring){ g.lineWidth = S * 0.045; g.strokeStyle = '#fff'; shapePath(g, S, S * 0.0225); g.stroke(); }
+  }
+  function draw(){
+    clamp();
+    cx.fillStyle = '#000'; cx.fillRect(0, 0, cv.width, cv.height);
+    /* faint full photo behind, bright inside the chosen shape */
+    var w = ed.w * ed.base * ed.scale, h = ed.h * ed.base * ed.scale;
+    cx.globalAlpha = .35; cx.drawImage(ed.img, cv.width / 2 + ed.ox - w / 2, cv.height / 2 + ed.oy - h / 2, w, h); cx.globalAlpha = 1;
+    paint(cx, cv.width, ed.ring);
+  }
+  /* drag + pinch */
+  var ptrs = {}, lastDist = 0;
+  cv.addEventListener('pointerdown', function(e){ cv.setPointerCapture(e.pointerId); ptrs[e.pointerId] = { x: e.clientX, y: e.clientY }; lastDist = 0; });
+  cv.addEventListener('pointermove', function(e){
+    var p = ptrs[e.pointerId]; if(!p) return;
+    var ids = Object.keys(ptrs), k = cv.width / cv.getBoundingClientRect().width;
+    if(ids.length === 1){ ed.ox += (e.clientX - p.x) * k; ed.oy += (e.clientY - p.y) * k; }
+    p.x = e.clientX; p.y = e.clientY;
+    if(ids.length === 2){
+      var a = ptrs[ids[0]], b = ptrs[ids[1]], d = Math.hypot(a.x - b.x, a.y - b.y);
+      if(lastDist){ ed.scale = Math.max(1, Math.min(4, ed.scale * d / lastDist)); $('zoom').value = ed.scale; }
+      lastDist = d;
+    }
+    draw();
+  });
+  function up(e){ delete ptrs[e.pointerId]; lastDist = 0; }
+  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+  cv.addEventListener('wheel', function(e){ e.preventDefault(); ed.scale = Math.max(1, Math.min(4, ed.scale * (e.deltaY < 0 ? 1.06 : 0.94))); $('zoom').value = ed.scale; draw(); }, { passive: false });
+  $('zoom').oninput = function(){ ed.scale = +this.value; draw(); };
+  $('shape').onclick = function(e){ var s = e.target.dataset && e.target.dataset.s; if(!s) return; ed.shape = s; [].forEach.call(this.children, function(b){ b.classList.toggle('on', b.dataset.s === s); }); draw(); };
+  $('ring').onclick = function(e){ var r = e.target.dataset && e.target.dataset.r; if(r == null) return; ed.ring = +r; [].forEach.call(this.children, function(b){ b.classList.toggle('on', b.dataset.r === r); }); draw(); };
+
+  function closeEd(){
+    $('ed').classList.remove('show'); ed.img = null;
+    if(ed.queue.length){ var n = ed.queue.shift(); openEditor(n.id, n.file); }
+  }
+  $('edno').onclick = closeEd;
+  $('edok').onclick = function(){
+    var out = document.createElement('canvas'); out.width = out.height = SIZE;
+    paint(out.getContext('2d'), SIZE, ed.ring);
+    var data = out.toDataURL('image/webp', 0.86);
+    if(data.indexOf('image/webp') < 0) data = out.toDataURL('image/png');
+    /* keep a small copy of the original so the crop can be adjusted later */
+    var big = Math.min(1, 640 / Math.max(ed.w, ed.h)), o2 = document.createElement('canvas');
+    o2.width = Math.round(ed.w * big); o2.height = Math.round(ed.h * big);
+    o2.getContext('2d').drawImage(ed.img, 0, 0, o2.width, o2.height);
+    var src = o2.toDataURL('image/jpeg', 0.82);
+    var id = ed.id;
+    put({ id: id, data: data, src: src }).then(render);
+    render(); closeEd();
+  };
+
+  /* ---------- bulk add ---------- */
+  $('bulk').onclick = function(){ $('filemulti').value = ''; $('filemulti').click(); };
+  $('filemulti').onchange = function(){
+    var files = [].slice.call(this.files); if(!files.length) return;
+    var free = []; for(var i = 0; i < N; i++) if(!slots[i]) free.push(i);
+    if(!free.length) free = Array.apply(null, Array(N)).map(function(_, i){ return i; });
+    files = files.slice(0, free.length);
+    var q = files.map(function(f, k){ return { id: free[k], file: f }; });
+    var first = q.shift(); ed.queue = q; openEditor(first.id, first.file);
+  };
+
+  /* ---------- pack file: save / share / load / clear ---------- */
+  function packBlob(){
+    var list = []; for(var i = 0; i < N; i++) if(slots[i]) list.push({ id: i, data: slots[i].data });
+    return new Blob([JSON.stringify({ app: 'tea-games', v: 1, slots: list })], { type: 'application/json' });
+  }
+  function haveAny(){ return Object.keys(slots).length > 0; }
+  $('save').onclick = function(){
+    if(!haveAny()) return say('Add at least one photo first.');
+    var a = document.createElement('a'); a.href = URL.createObjectURL(packBlob()); a.download = 'teapack.json';
+    document.body.appendChild(a); a.click(); a.remove(); say('Pack file saved to your downloads ✓', true);
+  };
+  $('share').onclick = function(){
+    if(!haveAny()) return say('Add at least one photo first.');
+    var f = new File([packBlob()], 'teapack.json', { type: 'application/json' });
+    if(navigator.canShare && navigator.canShare({ files: [f] })){
+      navigator.share({ files: [f], title: 'My Tea Games photos', text: 'Photo pack for the We Eat Tea games' }).catch(function(){});
+    } else {
+      $('save').click();
+      say('Sharing is not supported here, so the file was downloaded instead. Attach it to an email yourself.');
+    }
+  };
+  $('load').onclick = function(){ $('filepack').value = ''; $('filepack').click(); };
+  $('filepack').onchange = function(){
+    var f = this.files[0]; if(!f) return;
+    f.text().then(function(t){
+      var j = JSON.parse(t); if(!j || !Array.isArray(j.slots)) throw 0;
+      var ps = j.slots.filter(function(s){ return s && s.id >= 0 && s.id < N && /^data:image\//.test(s.data || ''); })
+        .map(function(s){ return put({ id: s.id, data: s.data, src: null }); });
+      return Promise.all(ps).then(function(){ render(); say('Loaded ' + ps.length + ' photos ✓', true); });
+    }).catch(function(){ say('That does not look like a Tea Games pack file.'); });
+  };
+  $('reset').onclick = function(){
+    if(!haveAny()) return;
+    if(!confirm('Remove all your photos from this device? The games go back to emoji.')) return;
+    tx(function(s){ s.clear(); }).then(function(){ slots = {}; render(); say('Cleared.', true); });
+  };
+
+  /* ---------- start ---------- */
+  render();
+  loadAll().then(function(list){ list.forEach(function(x){ slots[x.id] = x; }); render(); say(list.length ? 'Your photos are saved on this device ✓' : 'Tap a circle to add your first photo.', !!list.length); },
+    function(){ say('Storage is unavailable here. You can still make a pack file.'); });
+  try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(e){}
+  if('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) navigator.serviceWorker.register('sw.js').catch(function(){});
+})();
+</script>
+</body></html>

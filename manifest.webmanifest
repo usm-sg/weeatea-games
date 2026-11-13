@@ -1,0 +1,20 @@
+{
+  "name": "We Eat Tea Games",
+  "short_name": "Tea Games",
+  "description": "Quick Myanmar-food games with a worldwide leaderboard. Plays offline.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#1c120b",
+  "theme_color": "#1c120b",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Photo Studio", "url": "photo-studio.html" },
+    { "name": "Tea Strike", "url": "tea-strike.html" }
+  ]
+}

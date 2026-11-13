@@ -9,10 +9,39 @@ main{max-width:520px;margin:0 auto}h1{margin:0 0 4px;font-size:28px}p.sub{margin
 a.g{display:flex;gap:14px;align-items:center;background:var(--card);border:1px solid #4a3220;border-radius:16px;padding:16px;margin-bottom:12px;color:inherit;text-decoration:none}
 a.g:active{transform:scale(.98)}a.g .e{font-size:40px}a.g b{display:block;font-size:18px;color:var(--acc)}a.g span{font-size:14px;opacity:.8}
 footer{text-align:center;font-size:12px;opacity:.6;margin-top:24px}
-</style></head><body><main>
+#support{margin-top:22px;text-align:center}
+#support h2{font-size:16px;margin:0 0 4px;color:var(--acc)}
+#support p{margin:0 0 10px;font-size:13px;opacity:.8}
+#support .sup{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+#support .sup a{background:var(--acc);color:#2b1704;font-weight:700;font-size:14px;text-decoration:none;border-radius:12px;padding:10px 14px}
+#support .sup a.alt{background:#3a2a1b;color:var(--ink);border:1px solid #4a3220}
+</style><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#1c120b"><link rel="apple-touch-icon" href="icon-192.png">
+</head><body><main>
 <h1>🍵 We Eat Tea Games</h1><p class="sub">Quick Myanmar-food games. Beat the world's high scores!</p>
 <a class="g" href="tea-strike.html"><div class="e">🚀</div><div><b>Tea Strike</b><span>Food shooter, 15 levels, global leaderboard</span></div></a>
 <a class="g" href="tea-fusion.html"><div class="e">🍵</div><div><b>Tea Fusion</b><span>2048-style merging, global leaderboard</span></div></a>
 <a class="g" href="tea-blocks.html"><div class="e">🧱</div><div><b>Tea Blocks</b><span>Falling-block puzzle</span></div></a>
-<footer>Scores store only a nickname, score and country.</footer>
-</main></body></html>
+<a class="g" href="tea-match.html"><div class="e">🍜</div><div><b>Tea Match</b><span>Match-3 with Myanmar food, 90 seconds, global leaderboard</span></div></a>
+<a class="g" href="tea-mahjong.html"><div class="e">🀄</div><div><b>Tea Mahjong</b><span>Mahjong solitaire, clear the board fast, leaderboard</span></div></a>
+<a class="g" href="tea-solitaire.html"><div class="e">🃏</div><div><b>Tea Solitaire</b><span>Classic Klondike cards, draw 1 or 3, leaderboard</span></div></a>
+<a class="g" href="tea-checkers.html"><div class="e">🥢</div><div><b>Tea Checkers</b><span>Chinese Checkers against the computer</span></div></a>
+<a class="g" href="tea-words.html"><div class="e">🔤</div><div><b>Tea Words</b><span>Daily food word puzzle, share your result</span></div></a>
+<a class="g" href="spin-wheel.html"><div class="e">🎡</div><div><b>Spin the Wheel</b><span>Pick people at random from an Excel list</span></div></a>
+<a class="g" href="photo-studio.html"><div class="e">📸</div><div><b>Photo Studio</b><span>Use your own food photos inside the games</span></div></a>
+<div id="support"></div>
+<footer>Works offline once opened. Scores store only a nickname, score and country.</footer>
+</main><script>if("serviceWorker" in navigator && location.protocol.indexOf("http")===0)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})});</script>
+<script src="support.js"></script>
+<script>
+var SUPPORT = window.TEA_SUPPORT || {links:[], note:'', contact:''};
+(function(){
+  var links = window.TeaSupport ? TeaSupport.links() : [];
+  if(!links.length && !(SUPPORT.contact && !(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()))) return;
+  var box = document.getElementById('support');
+  var h = '<h2>Support the games</h2><p>' + SUPPORT.note + '</p><div class="sup">';
+  links.forEach(function(l, i){ h += '<a href="' + l.url + '" target="_blank" rel="noopener" class="' + (i ? 'alt' : '') + '">' + l.label + '</a>'; });
+  if(SUPPORT.contact) h += '<a href="' + SUPPORT.contact + '" target="_blank" rel="noopener" class="alt">Contact / feedback</a>';
+  box.innerHTML = h + '</div>';
+})();
+</script>
+</body></html>
