@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Fortune Tea — We Eat Tea</title>
+<style>
+:root{--ink:#fbeed8;--dim:#d9b98f;--gold:#ffd24d}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+html,body{margin:0;min-height:100%;background:radial-gradient(circle at 50% 20%,#5a2a14,#1c0f08 70%);color:var(--ink);font-family:system-ui,-apple-system,sans-serif}
+#app{max-width:440px;margin:0 auto;padding:16px 16px 70px;text-align:center}
+h1{margin:6px 0 0;font-size:28px;color:var(--gold)}.my{font-size:15px;color:var(--dim);margin:2px 0 10px}
+.sub{font-size:14px;color:var(--dim);line-height:1.45;margin:0 auto 10px;max-width:330px}
+#cupWrap{height:230px;position:relative;margin:6px 0}
+#cup{position:absolute;left:50%;bottom:0;width:130px;height:170px;margin-left:-65px;background:linear-gradient(90deg,#8a5a2b,#c68a43 45%,#8a5a2b);border-radius:14px 14px 36px 36px;border:3px solid #5b3a18;cursor:pointer;transform-origin:50% 100%}
+#cup::before{content:"";position:absolute;left:8px;right:8px;top:30px;height:5px;background:#5b3a18;border-radius:4px;box-shadow:0 40px 0 #5b3a18,0 80px 0 #5b3a18}
+#cup .lbl{position:absolute;left:0;right:0;top:50px;font-size:26px}
+.stick{position:absolute;bottom:150px;width:12px;height:110px;background:linear-gradient(#f3d9a0,#d9b06a);border-radius:5px;border:1px solid #9b7335;transform-origin:50% 100%}
+@keyframes shake{0%,100%{transform:rotate(0)}15%{transform:rotate(-14deg)}30%{transform:rotate(12deg)}45%{transform:rotate(-10deg)}60%{transform:rotate(9deg)}75%{transform:rotate(-5deg)}}
+#cup.shake{animation:shake .9s ease-in-out}
+.btn{font:inherit;font-weight:800;font-size:16px;border:0;border-radius:14px;padding:12px 22px;background:linear-gradient(#ffd24d,#ff9a3d);color:#2b1704;cursor:pointer;box-shadow:0 4px 0 #b8651b;margin:4px}
+.btn.alt{background:#5a3a22;color:#fff;box-shadow:0 4px 0 #2c1a0c}.btn:active{transform:translateY(2px)}
+#card{display:none;background:#fff8e6;color:#3a2410;border-radius:18px;padding:18px 16px;margin:10px 0;box-shadow:0 8px 26px rgba(0,0,0,.5);animation:pop .5s ease-out}
+@keyframes pop{from{transform:scale(.6) rotate(-4deg);opacity:0}to{transform:none;opacity:1}}
+#card .no{font-size:12px;letter-spacing:2px;color:#a5601a}
+#card .tx{font-size:19px;font-weight:700;line-height:1.35;margin:8px 0}
+#card .meta{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;font-size:13px}
+#card .meta span{background:#f3dfb0;border-radius:10px;padding:5px 9px}
+#card .tag{display:inline-block;background:#c0392b;color:#fff;border-radius:8px;font-size:11px;padding:2px 8px;margin-bottom:4px}
+#status{font-size:13px;color:var(--dim);margin:6px 0}
+#book{display:none;grid-template-columns:repeat(6,1fr);gap:6px;margin:10px 0}
+#book div{background:#3a2314;border-radius:8px;padding:8px 0;font-size:15px;color:#7c5a3a}
+#book div.on{background:#ffd24d;color:#3a2410;font-weight:800}
+.small{font-size:12px;color:#a88860;margin-top:14px}
+</style><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#1c120b"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+</head><body>
+<script src="support.js"></script>
+<script>
+/* Tea Games photo sprites — shared by every game and by the Photo Studio.
+   Reads 12 photo slots from this browser (IndexedDB), or from a teapack.json file
+   placed next to the games (use that one when bundling the games into a store app).
+   Any slot with no photo falls back to the normal emoji, so the games never break. */
+(function(){
+  var DB = 'tea-sprites', STORE = 'pack', N = 12;
+  var imgs = {}, maps = {}, cbs = [], isReady = false;
+  var S = window.TeaSprites = {
+    N: N,
+    ready: false,
+    map: function(o){ for(var k in o) maps[k] = o[k]; },
+    img: function(slot){ return imgs[slot] || null; },
+    forEmoji: function(e){ var i = maps[e]; return (i == null) ? null : (imgs[i] || null); },
+    onReady: function(cb){ if(isReady) cb(); else cbs.push(cb); }
+  };
+  function done(){ isReady = true; S.ready = true; var a = cbs; cbs = []; a.forEach(function(f){ try{ f(); }catch(e){} }); }
+
+  function openDB(){
+    return new Promise(function(res, rej){
+      if(!window.indexedDB) return rej(new Error('no idb'));
+      var r = indexedDB.open(DB, 1);
+      r.onupgradeneeded = function(){ r.result.createObjectStore(STORE, { keyPath: 'id' }); };
+      r.onsuccess = function(){ res(r.result); };
+      r.onerror = function(){ rej(r.error); };
+    });
+  }
+  function readAll(){
+    return openDB().then(function(db){
+      return new Promise(function(res, rej){
+        var q = db.transaction(STORE).objectStore(STORE).getAll();
+        q.onsuccess = function(){ res(q.result || []); };
+        q.onerror = function(){ rej(q.error); };
+      });
+    });
+  }
+  function fromPack(){
+    /* optional bundled file; the service worker keeps a copy so it also works offline */
+    return fetch('teapack.json').then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){ return (j && j.slots) ? j.slots.map(function(s){ return { id: s.id, data: s.data }; }) : []; })
+      .catch(function(){ return []; });
+  }
+  function load(item){
+    return new Promise(function(res){
+      if(!item || !item.data) return res();
+      var im = new Image();
+      im.onload = function(){ imgs[item.id] = im; res(); };
+      im.onerror = function(){ res(); };
+      im.src = item.data;
+    });
+  }
+  Promise.all([ readAll().catch(function(){ return []; }), fromPack() ]).then(function(r){
+    var byId = {};
+    r[1].forEach(function(x){ byId[x.id] = x; });   /* bundled pack first … */
+    r[0].forEach(function(x){ byId[x.id] = x; });   /* … the player's own photos win */
+    return Promise.all(Object.keys(byId).map(function(k){ return load(byId[k]); }));
+  }).then(done, done);
+})();
+
+</script>
+
+<div id="app">
+  <h1>🏮 Fortune Tea</h1>
+  <div class="my">ကံကောင်းပါစေ · May luck be with you</div>
+  <p class="sub" id="sub">Shake the bamboo cup and see which fortune stick falls out. One free shake a day gives you <b>Today’s Fortune</b>.</p>
+  <div id="cupWrap"><div id="cup"><div class="lbl">🍵</div></div></div>
+  <div id="status"></div>
+  <div id="card"></div>
+  <div>
+    <button class="btn" id="shake">🎋 Shake the cup</button>
+    <button class="btn alt" id="bookBtn">📖 Fortune book <span id="cnt"></span></button>
+  </div>
+  <div id="book"></div>
+  <div class="small">For fun and entertainment only — not real predictions.</div>
+</div>
+<script>
+(function(){
+'use strict';
+const $=id=>document.getElementById(id);
+const FOODS=['Mohinga 🍜','Laphet Thoke 🍵','Samosa 🥟','Mango 🥭','Banana fritters 🍌','Coconut noodles 🥥','Grilled skewers 🍢','Chilli salad 🌶️','Shan noodles 🍜','Sweet rice 🍚'];
+const COLOURS=['Golden yellow','Jade green','Ruby red','Sky blue','Warm orange','Tea brown','Lotus pink'];
+const F=[
+['Good tea needs patience. Something you have been waiting for is almost ready.','Luck'],
+['A small kindness this week comes back to you three times over.','Luck'],
+['Someone you have not heard from is thinking of you. Send the first message.','Love'],
+['Share a pot of tea and an old quarrel melts away.','Love'],
+['A steady hand beats a fast hand. Finish what you started.','Work'],
+['The idea you keep postponing is the one worth trying today.','Work'],
+['Listen first. The answer you need is in the other person’s words.','Work'],
+['Rest is part of the recipe. Take a slow cup and let your mind settle.','Health'],
+['A short walk after a meal will do more than a long plan.','Health'],
+['Drink water, stretch, smile. The small things carry the day.','Health'],
+['A road you have not taken leads to a good meal and a better story.','Travel'],
+['Pack light. What you need is already waiting where you are going.','Travel'],
+['Money likes company: save a little and share a little.','Money'],
+['Do not chase the quick gain. The slow and honest one lasts.','Money'],
+['A new friend appears where you least expect: in a queue, a stall, a chat.','Friends'],
+['Your laughter is the lucky charm today. Use it often.','Luck'],
+['The bitter and the sweet share one cup. Enjoy both.','Luck'],
+['Today ordinary becomes special if you pay attention to it.','Luck'],
+['Be the one who says thank you first.','Love'],
+['A family meal this week brings good news.','Love'],
+['Learn one small new thing today. It opens a bigger door next month.','Work'],
+['A problem that looks tangled needs only one loose thread. Find it.','Work'],
+['Sleep early tonight. Tomorrow rewards a clear head.','Health'],
+['Your spirit is stronger than your worry. Breathe in, breathe out.','Health'],
+['Follow your nose to the stall with the longest line of locals.','Travel'],
+['A short trip brings a long memory.','Travel'],
+['Spend on something that feeds you, not only something that impresses.','Money'],
+['A debt of kindness is ready to be repaid. Do it quietly.','Money'],
+['Say yes to the invitation you are unsure about.','Friends'],
+['The tea is hot, the day is young, and luck is in the cup.','Luck']
+];
+const KEY='fortune_tea_v1';
+let S; try{S=JSON.parse(localStorage.getItem(KEY))||{};}catch(e){S={};}
+S.seen=S.seen||[]; S.day=S.day||''; S.id=S.id==null?-1:S.id;
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}};
+const today=()=>{const d=new Date();return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate();};
+function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
+function lucky(id,seed){const h=hash(seed+':'+id);return {n:1+h%99,food:FOODS[(h>>4)%FOODS.length],col:COLOURS[(h>>8)%COLOURS.length]};}
+function show(id,daily){
+  const f=F[id],L=lucky(id,daily?today():String(Math.random()));
+  const c=$('card'); c.style.display='block'; c.style.animation='none'; void c.offsetWidth; c.style.animation='';
+  c.innerHTML=(daily?'<div class="tag">TODAY’S FORTUNE</div>':'')+'<div class="no">STICK No. '+(id+1)+' · '+f[1].toUpperCase()+'</div><div class="tx">'+f[0]+'</div><div class="meta"><span>🔢 Lucky number '+L.n+'</span><span>🍽️ '+L.food+'</span><span>🎨 '+L.col+'</span></div>'+
+   '<div style="margin-top:12px"><button class="btn alt" id="shr" style="font-size:14px;padding:9px 16px">📤 Share</button></div>';
+  $('shr').onclick=()=>{const t='🏮 My Fortune Tea stick: “'+f[0]+'” — lucky number '+L.n+'. Draw yours at '+location.href.split('#')[0];
+    if(navigator.share){navigator.share({text:t}).catch(()=>{});} else if(navigator.clipboard){navigator.clipboard.writeText(t).then(()=>{$('shr').textContent='✔ Copied';});}};
+  if(S.seen.indexOf(id)<0){S.seen.push(id);} save(); renderBook();
+}
+function renderBook(){
+  $('cnt').textContent='('+S.seen.length+'/'+F.length+')';
+  $('book').innerHTML=F.map((_,i)=>'<div class="'+(S.seen.indexOf(i)>=0?'on':'')+'">'+(i+1)+'</div>').join('');
+}
+function status(){
+  const done=S.day===today();
+  $('status').textContent=done?'Today’s fortune drawn ✔ — extra shakes are just for fun.':'You have 1 free shake today for Today’s Fortune.';
+  $('shake').textContent=done?'🎋 Shake again':'🎋 Shake the cup';
+}
+let busy=false;
+function sticks(){
+  const w=$('cupWrap'); w.querySelectorAll('.stick').forEach(s=>s.remove());
+  for(let i=0;i<7;i++){const s=document.createElement('div'); s.className='stick'; s.style.left=(50+(i-3)*5.5)+'%'; s.style.transform='rotate('+((i-3)*6)+'deg)'; w.insertBefore(s,$('cup'));}
+}
+function sfx(){try{const a=new (window.AudioContext||window.webkitAudioContext)();for(let i=0;i<7;i++){const o=a.createOscillator(),g=a.createGain();o.type='square';o.frequency.value=380+Math.random()*420;g.gain.setValueAtTime(.04,a.currentTime+i*.11);g.gain.exponentialRampToValueAtTime(.001,a.currentTime+i*.11+.07);o.connect(g);g.connect(a.destination);o.start(a.currentTime+i*.11);o.stop(a.currentTime+i*.11+.08);}}catch(e){}}
+function shake(){
+  if(busy) return; busy=true; $('card').style.display='none';
+  const cup=$('cup'); cup.classList.remove('shake'); void cup.offsetWidth; cup.classList.add('shake'); sfx();
+  try{navigator.vibrate&&navigator.vibrate([40,30,40,30,40]);}catch(e){}
+  setTimeout(()=>{
+    const first=S.day!==today(); let id;
+    if(first){ id=hash('fortune:'+today())%F.length; S.day=today(); S.id=id; } else { do{id=Math.floor(Math.random()*F.length);}while(id===S.id&&F.length>1); }
+    show(id,first); status(); busy=false;
+  },950);
+}
+$('shake').onclick=shake; $('cup').onclick=shake;
+$('bookBtn').onclick=()=>{const b=$('book'); b.style.display=b.style.display==='grid'?'none':'grid';};
+window.addEventListener('devicemotion',e=>{const a=e.accelerationIncludingGravity; if(a&&Math.abs(a.x)+Math.abs(a.y)+Math.abs(a.z)>38) shake();});
+window.__ft={shake,state:()=>S,total:F.length};
+sticks(); renderBook(); status();
+if(S.day===today()&&S.id>=0) show(S.id,true);
+})();
+</script>
+<script>if("serviceWorker" in navigator && location.protocol.indexOf("http")===0)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})});</script>
+
+
+<!--HOWTO--><script src="tea-hub.js"></script><script src="howto.js"></script><!--/HOWTO-->
+</body></html>

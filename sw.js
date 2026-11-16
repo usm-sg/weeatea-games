@@ -1,9 +1,9 @@
 /* Tea Games service worker — makes the games open and play with no connection,
    and quietly refreshes them whenever the device is online.
    To force every player onto a new release at once, change VERSION. */
-const VERSION = 'tea-games-v2';
+const VERSION = 'tea-games-v3';
 const CORE = ['./', 'index.html', 'tea-strike.html', 'tea-fusion.html', 'tea-blocks.html',
-              'spin-wheel.html', 'photo-studio.html', 'tea-match.html', 'tea-mahjong.html', 'tea-solitaire.html', 'tea-checkers.html', 'tea-words.html', 'support.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
+              'spin-wheel.html', 'photo-studio.html', 'tea-match.html', 'tea-mahjong.html', 'tea-solitaire.html', 'tea-checkers.html', 'tea-words.html', 'fortune-tea.html', 'chinlone.html', 'yangon-dash.html', 'myanmar-memory.html', 'support.js', 'howto.js', 'tea-hub.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 const OPTIONAL = ['teapack.json'];   // the bundled photo pack, if you added one
 const CDN = /^https:\/\/(cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net)\//;
 

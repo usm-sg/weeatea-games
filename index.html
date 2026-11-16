@@ -8,6 +8,12 @@
 main{max-width:520px;margin:0 auto}h1{margin:0 0 4px;font-size:28px}p.sub{margin:0 0 24px;opacity:.75}
 a.g{display:flex;gap:14px;align-items:center;background:var(--card);border:1px solid #4a3220;border-radius:16px;padding:16px;margin-bottom:12px;color:inherit;text-decoration:none}
 a.g:active{transform:scale(.98)}a.g .e{font-size:40px}a.g b{display:block;font-size:18px;color:var(--acc)}a.g span{font-size:14px;opacity:.8}
+
+#strip{display:flex;gap:8px;margin:0 0 18px}#strip div{flex:1;background:var(--card);border:1px solid #4a3220;border-radius:14px;padding:8px 6px;text-align:center;font-size:12px;opacity:.95}
+#strip b{display:block;font-size:20px;color:var(--acc)}
+h2.sec{font-size:15px;letter-spacing:1px;text-transform:uppercase;color:var(--acc);margin:22px 0 10px;opacity:.9}
+a.g.lock{opacity:.8;border-style:dashed}a.g.lock .e{filter:grayscale(.7)}a.g .req{display:block;font-size:12px;color:#ffd24d;margin-top:3px}
+#badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;justify-content:center}#badges span{background:var(--card);border:1px solid #4a3220;border-radius:10px;padding:4px 8px;font-size:12px}#badges span.off{opacity:.3;filter:grayscale(1)}
 footer{text-align:center;font-size:12px;opacity:.6;margin-top:24px}
 #support{margin-top:22px;text-align:center}
 #support h2{font-size:16px;margin:0 0 4px;color:var(--acc)}
@@ -18,6 +24,13 @@ footer{text-align:center;font-size:12px;opacity:.6;margin-top:24px}
 </style><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#1c120b"><link rel="apple-touch-icon" href="icon-192.png">
 </head><body><main>
 <h1>🍵 We Eat Tea Games</h1><p class="sub">Quick Myanmar-food games. Beat the world's high scores!</p>
+<div id="strip"><div><b id="stStreak">0</b>🔥 day streak</div><div><b id="stBest">0</b>🏅 best streak</div><div><b id="stBadges">0</b>🎖️ badges</div></div>
+<h2 class="sec">🇲🇲 Myanmar Corner</h2>
+<a class="g" href="fortune-tea.html" data-game="fortune-tea"><div class="e">🏮</div><div><b>Fortune Tea</b><span>Draw a fortune stick — one free fortune every day</span></div></a>
+<a class="g" href="chinlone.html" data-game="chinlone"><div class="e">🏐</div><div><b>Chinlone</b><span>Keep the traditional cane ball in the air, leaderboard</span></div></a>
+<a class="g" href="yangon-dash.html" data-game="yangon-dash"><div class="e">🛺</div><div><b>Yangon Dash</b><span>Endless tuk-tuk run, collect tea &amp; noodles, leaderboard</span></div></a>
+<a class="g" href="myanmar-memory.html" data-game="myanmar-memory"><div class="e">🧠</div><div><b>Myanmar Memory</b><span>Match Myanmar foods, endless levels, leaderboard</span></div></a>
+<h2 class="sec">🎮 Classic Games</h2>
 <a class="g" href="tea-strike.html"><div class="e">🚀</div><div><b>Tea Strike</b><span>Food shooter, 15 levels, global leaderboard</span></div></a>
 <a class="g" href="tea-fusion.html"><div class="e">🍵</div><div><b>Tea Fusion</b><span>2048-style merging, global leaderboard</span></div></a>
 <a class="g" href="tea-blocks.html"><div class="e">🧱</div><div><b>Tea Blocks</b><span>Falling-block puzzle</span></div></a>
@@ -28,10 +41,12 @@ footer{text-align:center;font-size:12px;opacity:.6;margin-top:24px}
 <a class="g" href="tea-words.html"><div class="e">🔤</div><div><b>Tea Words</b><span>Daily food word puzzle, share your result</span></div></a>
 <a class="g" href="spin-wheel.html"><div class="e">🎡</div><div><b>Spin the Wheel</b><span>Pick people at random from an Excel list</span></div></a>
 <a class="g" href="photo-studio.html"><div class="e">📸</div><div><b>Photo Studio</b><span>Use your own food photos inside the games</span></div></a>
+<div id="badges"></div>
 <div id="support"></div>
 <footer>Works offline once opened. Scores store only a nickname, score and country.</footer>
 </main><script>if("serviceWorker" in navigator && location.protocol.indexOf("http")===0)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})});</script>
 <script src="support.js"></script>
+<script src="tea-hub.js"></script>
 <script>
 var SUPPORT = window.TEA_SUPPORT || {links:[], note:'', contact:''};
 (function(){
@@ -42,6 +57,23 @@ var SUPPORT = window.TEA_SUPPORT || {links:[], note:'', contact:''};
   links.forEach(function(l, i){ h += '<a href="' + l.url + '" target="_blank" rel="noopener" class="' + (i ? 'alt' : '') + '">' + l.label + '</a>'; });
   if(SUPPORT.contact) h += '<a href="' + SUPPORT.contact + '" target="_blank" rel="noopener" class="alt">Contact / feedback</a>';
   box.innerHTML = h + '</div>';
+})();
+</script>
+<script>
+(function(){
+  function paint(){
+    var H=window.TeaHub; if(!H) return; var st=H.state();
+    document.getElementById('stStreak').textContent=st.streak; document.getElementById('stBest').textContent=st.best;
+    document.getElementById('stBadges').textContent=Object.keys(st.badges).length;
+    document.getElementById('badges').innerHTML=Object.keys(H.badges).map(function(k){var b=H.badges[k];return '<span class="'+(st.badges[k]?'':'off')+'" title="'+b[2]+'">'+b[0]+' '+b[1]+'</span>';}).join('');
+    [].forEach.call(document.querySelectorAll('a.g[data-game]'),function(a){
+      var g=a.getAttribute('data-game'), req=a.querySelector('.req'); if(req) req.remove();
+      var locked=H.locked(g); a.classList.toggle('lock',locked);
+      if(locked){ var r=document.createElement('span'); r.className='req'; r.textContent='🔒 Unlock: '+H.need(g); a.querySelector('div:last-child').appendChild(r);
+        a.onclick=function(e){e.preventDefault();H.dialog(g,paint);}; } else a.onclick=null;
+    });
+  }
+  paint();
 })();
 </script>
 </body></html>

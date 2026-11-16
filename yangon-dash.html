@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Yangon Dash — We Eat Tea</title>
+<style>
+:root{--ink:#fff7e6;--dim:#e9d2a8;--gold:#ffd24d}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+html,body{margin:0;height:100%;overflow:hidden;background:#222;color:var(--ink);font-family:system-ui,-apple-system,sans-serif;touch-action:none}
+canvas{position:fixed;inset:0;width:100%;height:100%}
+#hud{position:fixed;top:8px;left:8px;right:8px;display:flex;gap:8px;z-index:2;pointer-events:none}
+#hud div{flex:1;background:rgba(0,0,0,.45);border-radius:12px;padding:5px 8px;text-align:center}
+#hud small{display:block;font-size:10px;letter-spacing:1.5px;color:var(--dim)}#hud b{font-size:20px;color:var(--gold)}
+#overlay{position:fixed;inset:0;background:rgba(15,10,6,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:20px;z-index:5}
+#overlay.hide{display:none}#overlay h1{margin:0;font-size:34px}.sub{color:var(--dim);max-width:340px;font-size:14px;line-height:1.5}
+.stat{font-size:44px;font-weight:900;color:var(--gold)}.row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.btn{font:inherit;font-weight:800;font-size:16px;border:0;border-radius:14px;padding:12px 22px;background:linear-gradient(#ffd24d,#ff9a3d);color:#2b1704;cursor:pointer;box-shadow:0 4px 0 #b8651b}
+.btn.alt{background:#5a3a22;color:#fff;box-shadow:0 4px 0 #2c1a0c}.btn:active{transform:translateY(2px)}
+</style><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#1c120b"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+</head><body>
+<script src="support.js"></script>
+<script>
+/* Tea Games photo sprites — shared by every game and by the Photo Studio.
+   Reads 12 photo slots from this browser (IndexedDB), or from a teapack.json file
+   placed next to the games (use that one when bundling the games into a store app).
+   Any slot with no photo falls back to the normal emoji, so the games never break. */
+(function(){
+  var DB = 'tea-sprites', STORE = 'pack', N = 12;
+  var imgs = {}, maps = {}, cbs = [], isReady = false;
+  var S = window.TeaSprites = {
+    N: N,
+    ready: false,
+    map: function(o){ for(var k in o) maps[k] = o[k]; },
+    img: function(slot){ return imgs[slot] || null; },
+    forEmoji: function(e){ var i = maps[e]; return (i == null) ? null : (imgs[i] || null); },
+    onReady: function(cb){ if(isReady) cb(); else cbs.push(cb); }
+  };
+  function done(){ isReady = true; S.ready = true; var a = cbs; cbs = []; a.forEach(function(f){ try{ f(); }catch(e){} }); }
+
+  function openDB(){
+    return new Promise(function(res, rej){
+      if(!window.indexedDB) return rej(new Error('no idb'));
+      var r = indexedDB.open(DB, 1);
+      r.onupgradeneeded = function(){ r.result.createObjectStore(STORE, { keyPath: 'id' }); };
+      r.onsuccess = function(){ res(r.result); };
+      r.onerror = function(){ rej(r.error); };
+    });
+  }
+  function readAll(){
+    return openDB().then(function(db){
+      return new Promise(function(res, rej){
+        var q = db.transaction(STORE).objectStore(STORE).getAll();
+        q.onsuccess = function(){ res(q.result || []); };
+        q.onerror = function(){ rej(q.error); };
+      });
+    });
+  }
+  function fromPack(){
+    /* optional bundled file; the service worker keeps a copy so it also works offline */
+    return fetch('teapack.json').then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){ return (j && j.slots) ? j.slots.map(function(s){ return { id: s.id, data: s.data }; }) : []; })
+      .catch(function(){ return []; });
+  }
+  function load(item){
+    return new Promise(function(res){
+      if(!item || !item.data) return res();
+      var im = new Image();
+      im.onload = function(){ imgs[item.id] = im; res(); };
+      im.onerror = function(){ res(); };
+      im.src = item.data;
+    });
+  }
+  Promise.all([ readAll().catch(function(){ return []; }), fromPack() ]).then(function(r){
+    var byId = {};
+    r[1].forEach(function(x){ byId[x.id] = x; });   /* bundled pack first … */
+    r[0].forEach(function(x){ byId[x.id] = x; });   /* … the player's own photos win */
+    return Promise.all(Object.keys(byId).map(function(k){ return load(byId[k]); }));
+  }).then(done, done);
+})();
+
+</script>
+<script>window.TEA_LB_API = 'https://tea-leaderboard.usoemoe.workers.dev'; window.TEA_LB_GAME = 'yangon-dash';</script>
+<!--LB-WIDGET--><script>
+/* Tea Games leaderboard widget — shared by every game.
+   Needs window.TEA_LB_API (Worker URL) and window.TEA_LB_GAME set before this runs.
+   With no API URL it does nothing, so games work fine without a backend. */
+(function(){
+  var API = String(window.TEA_LB_API || '').replace(/\/+$/, '');
+  var GAME = String(window.TEA_LB_GAME || '');
+  var enabled = !!API && !!GAME;
+  var T = window.TeaLB = { enabled: enabled, submit: function(){}, open: function(){} };
+  if(!enabled) return;
+
+  var PID_KEY = 'tealb_pid', NAME_KEY = 'tealb_name';
+  function lsGet(k){ try{ return localStorage.getItem(k) || ''; }catch(e){ return ''; } }
+  function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+  var pid = lsGet(PID_KEY);
+  if(!pid){
+    pid = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+        : (Date.now().toString(36) + Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 8));
+    lsSet(PID_KEY, pid);
+  }
+
+  /* ---------- offline queue: scores played with no signal are sent later ---------- */
+  var Q_KEY = 'tealb_queue';
+  function qGet(){ try{ var a = JSON.parse(lsGet(Q_KEY) || '[]'); return Array.isArray(a) ? a : []; }catch(e){ return []; } }
+  function qPut(a){ lsSet(Q_KEY, JSON.stringify(a.slice(-30))); }
+  function qAdd(item){
+    var a = qGet(); a.push(item);
+    /* keep only the best 3 per game so a long offline session can't flood the server */
+    var by = {}; a.forEach(function(x){ (by[x.game] = by[x.game] || []).push(x); });
+    var out = []; Object.keys(by).forEach(function(g){ by[g].sort(function(x, y){ return y.score - x.score; }); out = out.concat(by[g].slice(0, 3)); });
+    qPut(out);
+  }
+  var flushing = false;
+  function flushQueue(){
+    if(flushing) return; var a = qGet(); if(!a.length) return;
+    flushing = true;
+    var keep = [];
+    (function next(i){
+      if(i >= a.length){ qPut(keep); flushing = false; return; }
+      var it = a[i];
+      fetch(API + '/api/score', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ game: it.game, pid: pid, name: it.name, score: it.score, secs: it.secs }) })
+      .then(function(){ next(i + 1); })          /* accepted or rejected by the server: either way, done with it */
+      .catch(function(){ keep = keep.concat(a.slice(i)); qPut(keep); flushing = false; });  /* still offline: try again later */
+    })(0);
+  }
+  window.addEventListener('online', flushQueue);
+  setTimeout(flushQueue, 1500);
+
+  var css = '\
+.tlb-back{position:fixed;inset:0;z-index:99999;display:none;align-items:center;justify-content:center;padding:14px;background:rgba(5,8,18,.8);font-family:"Segoe UI",system-ui,sans-serif;-webkit-tap-highlight-color:transparent}\
+.tlb-back.show{display:flex}\
+.tlb-card{width:min(94vw,440px);max-height:92vh;overflow:auto;background:linear-gradient(160deg,#25335e,#161d3a);border:2px solid #ffcf4d;border-radius:18px;padding:18px 16px 16px;color:#e8eefc;box-shadow:0 0 50px rgba(255,207,77,.25);text-align:center}\
+.tlb-card *{box-sizing:border-box;user-select:text}\
+.tlb-title{font-size:20px;font-weight:900;color:#ffcf4d;margin-bottom:4px}\
+.tlb-sub{font-size:12px;color:#9fb0d8;margin-bottom:10px;letter-spacing:1px}\
+.tlb-score{font-size:36px;font-weight:900;color:#fff;margin:2px 0 10px}\
+.tlb-in{width:100%;padding:11px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:#0f1630;color:#fff;font-size:16px;text-align:center;outline:none}\
+.tlb-in:focus{border-color:#ffcf4d}\
+.tlb-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:12px}\
+.tlb-btn{background:linear-gradient(#ffae52,#e8722a);color:#fff;border:none;font-weight:800;font-size:14px;padding:10px 20px;border-radius:22px;cursor:pointer;box-shadow:0 4px 0 #a84e14}\
+.tlb-btn:active{transform:translateY(3px);box-shadow:0 1px 0 #a84e14}\
+.tlb-btn.alt{background:linear-gradient(#6b7bb0,#46557f);box-shadow:0 4px 0 #2a3558}\
+.tlb-btn:disabled{opacity:.5}\
+.tlb-msg{min-height:20px;margin-top:10px;font-size:13px;color:#9fb0d8}\
+.tlb-msg.err{color:#ff8a8a}\
+.tlb-ranks{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:6px 0 2px}\
+.tlb-rank{background:rgba(255,255,255,.08);border-radius:12px;padding:8px 12px;min-width:92px}\
+.tlb-rank b{display:block;font-size:22px;color:#ffcf4d}\
+.tlb-rank span{font-size:11px;color:#9fb0d8}\
+.tlb-tabs{display:flex;gap:6px;justify-content:center;margin:8px 0}\
+.tlb-tab{flex:1;background:rgba(255,255,255,.08);color:#c9d3ea;border:none;border-radius:16px;padding:7px 4px;font-size:13px;font-weight:700;cursor:pointer}\
+.tlb-tab.on{background:#ffcf4d;color:#1a1a2e}\
+.tlb-list{margin:8px 0 0;text-align:left}\
+.tlb-li{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:10px;font-size:14px}\
+.tlb-li:nth-child(odd){background:rgba(255,255,255,.04)}\
+.tlb-li.me{background:rgba(255,207,77,.2);outline:1px solid #ffcf4d}\
+.tlb-r{width:34px;text-align:center;font-weight:900;color:#9fb0d8}\
+.tlb-li:nth-child(1) .tlb-r{color:#ffd54d;font-size:17px}.tlb-li:nth-child(2) .tlb-r{color:#d8dde8;font-size:16px}.tlb-li:nth-child(3) .tlb-r{color:#e0955a;font-size:16px}\
+.tlb-n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\
+.tlb-c{font-size:11px;color:#9fb0d8;white-space:nowrap}\
+.tlb-s{font-weight:800;color:#ffcf4d;font-variant-numeric:tabular-nums}\
+.tlb-gap{text-align:center;color:#6f7fa8;font-size:12px;padding:2px}\
+.tlb-empty{padding:18px 8px;color:#9fb0d8;font-size:13px;text-align:center}';
+  var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+
+  var back = document.createElement('div'); back.className = 'tlb-back';
+  var card = document.createElement('div'); card.className = 'tlb-card';
+  back.appendChild(card); document.body.appendChild(back);
+  // keep typing in the box from triggering game controls
+  ['keydown','keyup','keypress'].forEach(function(ev){ back.addEventListener(ev, function(e){ if(e.key !== 'Escape') e.stopPropagation(); }); });
+  back.addEventListener('click', function(e){ if(e.target === back) close(); });
+  window.addEventListener('keydown', function(e){ if(e.key === 'Escape' && back.classList.contains('show')) close(); });
+
+  function close(){ back.classList.remove('show'); }
+  function show(){ back.classList.add('show'); }
+  function el(tag, cls, text){ var n = document.createElement(tag); if(cls) n.className = cls; if(text != null) n.textContent = text; return n; }
+  function fmt(n){ try{ return Number(n).toLocaleString(); }catch(e){ return String(n); } }
+  function flag(cc){
+    if(!cc || cc === 'XX' || cc.length !== 2) return '🌐';
+    try{ return String.fromCodePoint(0x1F1E6 + cc.charCodeAt(0) - 65, 0x1F1E6 + cc.charCodeAt(1) - 65); }catch(e){ return ''; }
+  }
+
+  var myCountry = '', period = 'all', onlyMine = false;
+
+  /* ---------- leaderboard view ---------- */
+  function openBoard(startPeriod){
+    if(startPeriod) period = startPeriod;
+    renderBoard(); show(); loadBoard();
+  }
+  var listBox, scopeBtn;
+  function renderBoard(){
+    card.innerHTML = '';
+    card.appendChild(el('div', 'tlb-title', '🏆 Leaderboard'));
+    card.appendChild(el('div', 'tlb-sub', 'BEST SCORE PER PLAYER'));
+    var tabs = el('div', 'tlb-tabs');
+    [['day','Today'],['week','This week'],['all','All-time']].forEach(function(p){
+      var b = el('button', 'tlb-tab' + (period === p[0] ? ' on' : ''), p[1]);
+      b.onclick = function(){ period = p[0]; renderBoard(); loadBoard(); };
+      tabs.appendChild(b);
+    });
+    card.appendChild(tabs);
+    var sc = el('div', 'tlb-tabs');
+    var w = el('button', 'tlb-tab' + (!onlyMine ? ' on' : ''), '🌍 World');
+    w.onclick = function(){ onlyMine = false; renderBoard(); loadBoard(); };
+    scopeBtn = el('button', 'tlb-tab' + (onlyMine ? ' on' : ''), (myCountry ? flag(myCountry) + ' ' + myCountry : '📍 My country'));
+    scopeBtn.onclick = function(){ onlyMine = true; renderBoard(); loadBoard(); };
+    sc.appendChild(w); sc.appendChild(scopeBtn); card.appendChild(sc);
+    listBox = el('div', 'tlb-list'); listBox.appendChild(el('div', 'tlb-empty', 'Loading…'));
+    card.appendChild(listBox);
+    var row = el('div', 'tlb-row'); var cb = el('button', 'tlb-btn alt', 'Close'); cb.onclick = close; row.appendChild(cb); card.appendChild(row);
+  }
+  var reqSeq = 0;
+  function loadBoard(){
+    var my = ++reqSeq;
+    var q = 'game=' + encodeURIComponent(GAME) + '&period=' + period + '&limit=25&pid=' + encodeURIComponent(pid);
+    if(onlyMine && myCountry) q += '&country=' + myCountry;
+    var ckey = 'tealb_cache_' + GAME + '_' + period + '_' + (onlyMine ? 'c' : 'w');
+    function drawEntries(d, stale){
+      if(my !== reqSeq) return;
+      if(d.you_country && !myCountry){
+        myCountry = d.you_country;
+        if(scopeBtn && myCountry !== 'XX') scopeBtn.textContent = flag(myCountry) + ' ' + myCountry;
+      }
+      listBox.innerHTML = '';
+      if(stale) listBox.appendChild(el('div', 'tlb-empty', 'Offline — showing the last saved board.'));
+      if(!d.entries.length){ listBox.appendChild(el('div', 'tlb-empty', 'No scores here yet — be the first!')); return; }
+      var inList = false;
+      d.entries.forEach(function(e){
+        if(e.me) inList = true;
+        var li = el('div', 'tlb-li' + (e.me ? ' me' : ''));
+        li.appendChild(el('div', 'tlb-r', '#' + e.rank));
+        li.appendChild(el('div', 'tlb-n', e.name));
+        li.appendChild(el('div', 'tlb-c', flag(e.country) + ' ' + (e.country === 'XX' ? '' : e.country)));
+        li.appendChild(el('div', 'tlb-s', fmt(e.score)));
+        listBox.appendChild(li);
+      });
+      if(d.me && !inList){
+        listBox.appendChild(el('div', 'tlb-gap', '• • •'));
+        var li2 = el('div', 'tlb-li me');
+        li2.appendChild(el('div', 'tlb-r', '#' + d.me.rank));
+        li2.appendChild(el('div', 'tlb-n', 'You'));
+        li2.appendChild(el('div', 'tlb-c', ''));
+        li2.appendChild(el('div', 'tlb-s', fmt(d.me.score)));
+        listBox.appendChild(li2);
+      }
+    }
+    fetch(API + '/api/top?' + q).then(function(r){ return r.json(); }).then(function(d){
+      if(my !== reqSeq) return;
+      if(d.error) throw new Error(d.error);
+      lsSet(ckey, JSON.stringify(d));
+      drawEntries(d, false);
+    }).catch(function(){
+      if(my !== reqSeq) return;
+      var c = null; try{ c = JSON.parse(lsGet(ckey) || 'null'); }catch(e){}
+      if(c && c.entries){ drawEntries(c, true); return; }
+      listBox.innerHTML = '';
+      var m = el('div', 'tlb-empty', "Couldn't reach the leaderboard. Check your connection."); listBox.appendChild(m);
+    });
+  }
+
+  /* ---------- submit view ---------- */
+  function submitScore(score, secs){
+    score = Math.floor(Number(score)); secs = Number(secs);
+    if(!(score > 0)) return;
+    card.innerHTML = '';
+    card.appendChild(el('div', 'tlb-title', '🏆 Submit your score'));
+    card.appendChild(el('div', 'tlb-sub', 'JOIN THE WORLD RANKING'));
+    card.appendChild(el('div', 'tlb-score', fmt(score)));
+    var inp = el('input', 'tlb-in'); inp.type = 'text'; inp.maxLength = 16; inp.placeholder = 'Your nickname';
+    inp.value = lsGet(NAME_KEY); inp.setAttribute('autocomplete', 'nickname'); inp.setAttribute('enterkeyhint', 'send');
+    card.appendChild(inp);
+    var msg = el('div', 'tlb-msg', 'Only your nickname, score and country are stored.');
+    card.appendChild(msg);
+    var row = el('div', 'tlb-row');
+    var ok = el('button', 'tlb-btn', 'Submit'); var skip = el('button', 'tlb-btn alt', 'Skip');
+    row.appendChild(ok); row.appendChild(skip); card.appendChild(row);
+    skip.onclick = close;
+    function go(){
+      var name = inp.value.trim();
+      if(!name){ msg.className = 'tlb-msg err'; msg.textContent = 'Please type a nickname.'; inp.focus(); return; }
+      lsSet(NAME_KEY, name);
+      ok.disabled = true; msg.className = 'tlb-msg'; msg.textContent = 'Sending…';
+      fetch(API + '/api/score', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ game: GAME, pid: pid, name: name, score: score, secs: secs }) })
+      .then(function(r){ return r.json().then(function(d){ return { ok: r.ok, d: d }; }); })
+      .then(function(res){
+        if(!res.ok) throw new Error(res.d && res.d.error || 'error');
+        myCountry = res.d.country || myCountry; showResult(res.d, score);
+      }).catch(function(err){
+        var m = String(err && err.message || '');
+        /* a failed fetch() is a TypeError; replies from the server arrive as plain Errors */
+        if(navigator.onLine === false || err instanceof TypeError){
+          qAdd({ game: GAME, name: name, score: score, secs: secs, t: Date.now() });
+          card.innerHTML = '';
+          card.appendChild(el('div', 'tlb-title', '📴 Saved offline'));
+          card.appendChild(el('div', 'tlb-sub', name.toUpperCase()));
+          card.appendChild(el('div', 'tlb-score', fmt(score)));
+          card.appendChild(el('div', 'tlb-msg', "No connection right now. Your score will be sent automatically when you're back online."));
+          var r2 = el('div', 'tlb-row'); var c2 = el('button', 'tlb-btn', 'OK'); c2.onclick = close; r2.appendChild(c2); card.appendChild(r2);
+          return;
+        }
+        ok.disabled = false; msg.className = 'tlb-msg err';
+        msg.textContent = m === 'implausible' || m === 'too_short' ? "That score couldn't be verified."
+          : m === 'rate_limited' ? 'Too many submissions — try again later.'
+          : "Couldn't reach the leaderboard. Tap Submit to retry.";
+      });
+    }
+    ok.onclick = go;
+    inp.addEventListener('keydown', function(e){ if(e.key === 'Enter') go(); });
+    show();
+    setTimeout(function(){ try{ inp.focus(); inp.select(); }catch(e){} }, 60);
+  }
+
+  function showResult(d, score){
+    card.innerHTML = '';
+    card.appendChild(el('div', 'tlb-title', '🎉 Score saved!'));
+    card.appendChild(el('div', 'tlb-sub', (d.name || '').toUpperCase()));
+    var rk = el('div', 'tlb-ranks');
+    function box(label, v){ if(!v) return; var b = el('div', 'tlb-rank'); b.appendChild(el('b', '', '#' + fmt(v))); b.appendChild(el('span', '', label)); rk.appendChild(b); }
+    box('Worldwide', d.ranks && d.ranks.all);
+    if(d.country && d.country !== 'XX') box(flag(d.country) + ' ' + d.country, d.ranks && d.ranks.country);
+    box('Today', d.ranks && d.ranks.day);
+    card.appendChild(rk);
+    if(d.best && d.best > score) card.appendChild(el('div', 'tlb-msg', 'Your personal best is ' + fmt(d.best) + '.'));
+    var row = el('div', 'tlb-row');
+    var v = el('button', 'tlb-btn', 'View leaderboard'); var c = el('button', 'tlb-btn alt', 'Close');
+    v.onclick = function(){ openBoard('all'); }; c.onclick = close;
+    row.appendChild(v); row.appendChild(c); card.appendChild(row);
+  }
+
+  T.submit = submitScore;
+  T.open = openBoard;
+})();
+
+</script><!--/LB-WIDGET-->
+
+<canvas id="cv"></canvas>
+<div id="hud"><div><small>SCORE</small><b id="sc">0</b></div><div><small>BEST</small><b id="best">0</b></div><div><small>🍵</small><b id="tea">0</b></div></div>
+<div id="overlay"><div id="ov"></div></div>
+<script>
+(function(){
+'use strict';
+const $=id=>document.getElementById(id), cv=$('cv'), ctx=cv.getContext('2d');
+let W=0,H=0,dpr=1,RW=0,RX=0,LW=0;
+function resize(){dpr=Math.min(2,window.devicePixelRatio||1);W=innerWidth;H=innerHeight;cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);RW=Math.min(W,H*0.62);RX=(W-RW)/2;LW=RW/3;}
+addEventListener('resize',resize); resize();
+let best=+localStorage.getItem('yangondash_best')||0; $('best').textContent=best;
+const OBST=['🚌','🚧','🐕','🛵','🚕'], GOOD=['🍵','🍵','🍜'];
+let state='menu',lane=1,laneX=1,items=[],dist=0,speed=0,score=0,tea=0,t0=0,nextSpawn=0,flash=0,scroll=0,crash=null;
+function start(){lane=1;laneX=1;items=[];dist=0;speed=H*0.55;score=0;tea=0;t0=performance.now();nextSpawn=0;crash=null;state='play';$('overlay').classList.add('hide');upd();}
+function upd(){ $('sc').textContent=score; $('tea').textContent=tea; }
+function spawn(){
+  const free=Math.floor(Math.random()*3), r=Math.random();
+  const lanes=[0,1,2];
+  lanes.forEach(l=>{ if(l!==free && (r<.55? Math.random()<.55 : Math.random()<.9)) items.push({l,y:-LW,t:'o',e:OBST[Math.floor(Math.random()*OBST.length)]}); });
+  if(Math.random()<.7) items.push({l:free,y:-LW*(1+Math.random()*.4),t:'g',e:GOOD[Math.floor(Math.random()*GOOD.length)]});
+  // guarantee there is always a free lane
+  if(!items.some(i=>i.t==='g'&&i.l===free&&i.y<0)) {}
+}
+function move(d){ if(state!=='play') return; lane=Math.max(0,Math.min(2,lane+d)); }
+let ac; function tone(f,d,type){try{ac=ac||new (window.AudioContext||window.webkitAudioContext)();const o=ac.createOscillator(),gn=ac.createGain();o.type=type||'sine';o.frequency.value=f;gn.gain.setValueAtTime(.12,ac.currentTime);gn.gain.exponentialRampToValueAtTime(.001,ac.currentTime+d);o.connect(gn);gn.connect(ac.destination);o.start();o.stop(ac.currentTime+d);}catch(e){}}
+function end(){
+  state='over'; const secs=Math.round((performance.now()-t0)/1000); const nb=score>best; if(nb){best=score;try{localStorage.setItem('yangondash_best',best);}catch(e){}} $('best').textContent=best; tone(120,.5,'sawtooth'); try{navigator.vibrate&&navigator.vibrate(120);}catch(e){}
+  const ov=$('ov'); ov.innerHTML='<h1>💥 Crash!</h1><div class="stat">'+score+'</div><div class="sub">'+tea+' 🍵 collected'+(nb&&score>0?' · <b style="color:#ffd24d">New best!</b>':'')+'</div>';
+  const row=document.createElement('div'); row.className='row';
+  const pb=document.createElement('button'); pb.className='btn'; pb.textContent='Drive again'; pb.onclick=start; row.appendChild(pb);
+  if(window.TeaLB&&TeaLB.enabled){const b=document.createElement('button'); b.className='btn alt'; b.textContent='🏆 Ranks'; b.onclick=()=>TeaLB.open(); row.appendChild(b); if(score>0) setTimeout(()=>{if(state==='over') TeaLB.submit(score,secs);},700);}
+  const tip=window.TeaSupport&&TeaSupport.button('btn alt'); if(tip) row.appendChild(tip);
+  ov.appendChild(row); setTimeout(()=>$('overlay').classList.remove('hide'),450);
+}
+function menu(){ $('ov').innerHTML='<h1>🛺 Yangon Dash</h1><div class="sub">Zip through a busy Yangon street in your tuk-tuk! Dodge buses, dogs and roadworks, and grab 🍵 tea and 🍜 noodles for points. The road gets faster the longer you last.<br><br><b>Tap left / right</b> side of the screen, swipe, or use ← → keys.</div><button class="btn" id="pl">Start</button>'+(window.TeaLB&&TeaLB.enabled?'<button class="btn alt" id="rk">🏆 Ranks</button>':''); $('pl').onclick=start; const rk=$('rk'); if(rk) rk.onclick=()=>TeaLB.open(); }
+cv.addEventListener('pointerdown',e=>{e.preventDefault(); if(state!=='play') return; const x=e.clientX; move(x<W/2?-1:1);});
+let sx=null; cv.addEventListener('touchstart',e=>{sx=e.touches[0].clientX;},{passive:true});
+cv.addEventListener('touchend',e=>{ if(sx==null) return; const dx=e.changedTouches[0].clientX-sx; sx=null; },{passive:true});
+addEventListener('keydown',e=>{ if(e.code==='ArrowLeft'||e.code==='KeyA') move(-1); else if(e.code==='ArrowRight'||e.code==='KeyD') move(1); else if((e.code==='Space'||e.code==='Enter')&&state!=='play'&&!$('overlay').classList.contains('hide')) start(); });
+let last=performance.now();
+function frame(now){
+  const dt=Math.min(.033,(now-last)/1000); last=now;
+  const py=H*0.78, size=LW*0.62;
+  // roadside
+  ctx.fillStyle='#2c5a2a';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#3b3b40';ctx.fillRect(RX,0,RW,H);
+  ctx.fillStyle='#e8d6a8';ctx.fillRect(RX-4,0,4,H);ctx.fillRect(RX+RW,0,4,H);
+  scroll=(scroll+(state==='play'?speed:H*.1)*dt)%(H*0.12);
+  ctx.fillStyle='rgba(255,255,255,.55)';
+  for(let l=1;l<3;l++)for(let y=-H*.12+scroll;y<H;y+=H*.12)ctx.fillRect(RX+l*LW-2,y,4,H*.06);
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  const decor=['🌴','🏮','🌴','🏠'];ctx.font=Math.round(LW*.5)+'px serif';
+  for(let i=0;i<8;i++){const y=((i*H/7)+scroll*1.0)%(H+LW)-LW/2; ctx.fillText(decor[i%4],RX*0.5,y); ctx.fillText(decor[(i+1)%4],W-RX*0.5,y);}
+  if(state==='play'){
+    dist+=speed*dt; speed=H*0.55+Math.min(H*0.9,dist*0.012); score=Math.floor(dist/40)+tea*10; // distance + tea
+    nextSpawn-=speed*dt; if(nextSpawn<=0){ spawn(); nextSpawn=LW*(3.2-Math.min(1.6,dist/20000)); }
+    laneX+=(lane-laneX)*Math.min(1,dt*14);
+    items.forEach(i=>i.y+=speed*dt);
+    const px=RX+laneX*LW+LW/2;
+    for(const i of items){
+      const ix=RX+i.l*LW+LW/2;
+      if(Math.abs(i.y-py)<size*.7 && Math.abs(ix-px)<size*.75){
+        if(i.t==='g'){ i.dead=true; tea++; if(i.e==='🍜'){tea+=4;} tone(i.e==='🍜'?880:660,.1); }
+        else { crash={x:px,y:py}; end(); break; }
+      }
+    }
+    items=items.filter(i=>!i.dead&&i.y<H+LW);
+    upd();
+  }
+  ctx.font=Math.round(size)+'px serif';
+  items.forEach(i=>ctx.fillText(i.e,RX+i.l*LW+LW/2,i.y));
+  if(state!=='menu'){ const px=RX+laneX*LW+LW/2; ctx.font=Math.round(size*1.05)+'px serif'; ctx.fillText(crash?'💥':'🛺',px,py); }
+  else { ctx.font=Math.round(size*1.05)+'px serif'; ctx.fillText('🛺',W/2,py); }
+  requestAnimationFrame(frame);
+}
+menu(); requestAnimationFrame(frame);
+window.__yd={start,move,state:()=>state,score:()=>score,tea:()=>tea,items:()=>items,lane:()=>lane,spawn,end};
+})();
+</script>
+<script>if("serviceWorker" in navigator && location.protocol.indexOf("http")===0)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})});</script>
+
+<!--HOWTO--><script src="tea-hub.js"></script><script src="howto.js"></script><!--/HOWTO-->
+</body></html>

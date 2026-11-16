@@ -42,3 +42,15 @@ STORE APPS LATER (Capacitor)
   - AdSense does not run inside store apps; use AdMob there.
   - Apple may reject apps that are only a website in a wrapper; keep the games self-contained
     (they are) and add some native touch (icon, splash, haptics) before submitting.
+
+--- UNLOCKS, STREAKS & MYANMAR CORNER (new) ---
+New games: Fortune Tea, Chinlone, Yangon Dash, Myanmar Memory (Myanmar Corner on the home page).
+tea-hub.js controls streaks, badges and which games are locked. Open it and edit UNLOCKS at the top:
+  yangon-dash and myanmar-memory are locked by default; unlock = ANY ONE of: watch ads, play N days in a row, supporter pass.
+  Games not listed are free. Delete an entry to make a game free.
+Rewarded ads: not available on the plain website (AdSense cannot reward ads). In a store app, set
+  window.TEA_ADS = { rewarded: () => Promise<boolean> } (e.g. AdMob rewarded video). Until then the "watch ads" option is hidden.
+Supporter pass: set window.TEA_PASS = { url:'<your Ko-fi/Stripe link>', codes:['<sha256 hash>'] } before tea-hub.js loads
+  (or edit the TEA_PASS default in tea-hub.js). Make a hash with:  python3 make_code.py MYCODE   (included in the source folder).
+  Codes are checked on the device; for stronger protection verify in the Worker later.
+Worker: re-paste worker-index.js into Cloudflare (adds chinlone, yangon-dash, myanmar-memory to the leaderboard).
