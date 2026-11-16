@@ -3,9 +3,9 @@
 window.TEA_SUPPORT = {
   note: 'These games are free. If you enjoy them, a small tip keeps them going.',
   links: [
-    {label: '☕ Buy me a coffee on Ko-fi', url: ''},   // e.g. 'https://ko-fi.com/yourname'
-    {label: 'Sponsor on GitHub',          url: ''},   // e.g. 'https://github.com/sponsors/yourname'
-    {label: 'PayPal',                     url: ''}    // e.g. 'https://paypal.me/yourname'
+    {label: '☕ Buy me a coffee on Ko-fi', url: 'https://ko-fi.com/weeattea'},   // e.g. 'https://ko-fi.com/weeattea'
+    {label: 'Sponsor on GitHub',          url: 'https://github.com/sponsors/usm-sg/'},   // e.g. 'https://github.com/sponsors/yourname'
+    {label: 'PayPal',                     url: 'https://www.paypal.me/MOESG1234'}    // e.g. 'https://paypal.me/yourname'
   ],
   contact: ''                                          // e.g. 'mailto:you@example.com' or a Telegram link
 };
