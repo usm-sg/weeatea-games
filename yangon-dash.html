@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head>
+<html lang="en"><head><!--THEME--><script src="tea-theme.js"></script><!--/THEME-->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Yangon Dash — We Eat Tea</title>
@@ -381,8 +381,8 @@ function frame(now){
   const dt=Math.min(.033,(now-last)/1000); last=now;
   const py=H*0.78, size=LW*0.62;
   // roadside
-  ctx.fillStyle='#2c5a2a';ctx.fillRect(0,0,W,H);
-  ctx.fillStyle='#3b3b40';ctx.fillRect(RX,0,RW,H);
+  ctx.fillStyle=window.TEA_LIGHT?'#9fd98b':'#2c5a2a';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=window.TEA_LIGHT?'#6a6a74':'#3b3b40';ctx.fillRect(RX,0,RW,H);
   ctx.fillStyle='#e8d6a8';ctx.fillRect(RX-4,0,4,H);ctx.fillRect(RX+RW,0,4,H);
   scroll=(scroll+(state==='play'?speed:H*.1)*dt)%(H*0.12);
   ctx.fillStyle='rgba(255,255,255,.55)';
@@ -417,6 +417,5 @@ window.__yd={start,move,state:()=>state,score:()=>score,tea:()=>tea,items:()=>it
 })();
 </script>
 <script>if("serviceWorker" in navigator && location.protocol.indexOf("http")===0)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})});</script>
-
 <!--HOWTO--><script src="tea-hub.js"></script><script src="howto.js"></script><!--/HOWTO-->
 </body></html>

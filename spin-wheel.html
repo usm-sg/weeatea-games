@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
+<head><!--THEME--><script src="tea-theme.js"></script><!--/THEME-->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Spin Wheel Picker</title>
@@ -360,8 +360,8 @@
 
     const n = wheelPeople.length;
     if(!n){
-      ctx.beginPath(); ctx.arc(cx,cy,R,0,TAU); ctx.fillStyle = '#1c2744'; ctx.fill();
-      ctx.fillStyle = '#8fa0c9'; ctx.font = '600 36px Segoe UI, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.beginPath(); ctx.arc(cx,cy,R,0,TAU); ctx.fillStyle = window.TEA_LIGHT ? '#f6ead2' : '#1c2744'; ctx.fill();
+      ctx.fillStyle = window.TEA_LIGHT ? '#7a5f40' : '#8fa0c9'; ctx.font = '600 36px Segoe UI, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(people.length ? 'No one left on the wheel' : 'Load a list to begin', cx, cy);
       return;
     }
@@ -650,6 +650,8 @@
 })();
 </script>
 <!--PWA-SW--><script>if("serviceWorker" in navigator && location.protocol.indexOf("http")===0)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})});</script><!--/PWA-SW-->
+
+
 
 
 

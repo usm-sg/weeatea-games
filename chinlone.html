@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head>
+<html lang="en"><head><!--THEME--><script src="tea-theme.js"></script><!--/THEME-->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Chinlone — We Eat Tea</title>
@@ -386,8 +386,8 @@ let last=performance.now();
 function frame(now){
   const dt=Math.min(.033,(now-last)/1000); last=now;
   // background: court
-  const gg=ctx.createLinearGradient(0,0,0,H);gg.addColorStop(0,'#17402b');gg.addColorStop(.75,'#1f5a3b');gg.addColorStop(1,'#0e2a1a');ctx.fillStyle=gg;ctx.fillRect(0,0,W,H);
-  const gy=H*0.86; ctx.fillStyle='#c79a56';ctx.fillRect(0,gy,W,H-gy);ctx.fillStyle='rgba(0,0,0,.18)';for(let x=0;x<W;x+=26)ctx.fillRect(x,gy,2,H-gy);
+  const L=window.TEA_LIGHT,gg=ctx.createLinearGradient(0,0,0,H);gg.addColorStop(0,L?'#bfe6ff':'#17402b');gg.addColorStop(.75,L?'#e9f8e4':'#1f5a3b');gg.addColorStop(1,L?'#a8dc9a':'#0e2a1a');ctx.fillStyle=gg;ctx.fillRect(0,0,W,H);
+  const gy=H*0.86; ctx.fillStyle=L?'#e8c488':'#c79a56';ctx.fillRect(0,gy,W,H-gy);ctx.fillStyle='rgba(0,0,0,.12)';for(let x=0;x<W;x+=26)ctx.fillRect(x,gy,2,H-gy);
   ctx.font=Math.round(H*0.04)+'px serif';ctx.textAlign='center';for(let i=0;i<5;i++)ctx.fillText('🌴',W*(0.1+i*0.2),gy-4);
   if(ball&&state!=='menu'){
     if(state==='play'){
@@ -398,10 +398,10 @@ function frame(now){
       dancerX+=(ball.x-dancerX)*Math.min(1,dt*4);
     }
     // shadow
-    ctx.fillStyle='rgba(0,0,0,.25)';const sh=Math.max(.3,1-(gy-ball.y)/H);ctx.beginPath();ctx.ellipse(ball.x,gy+6,ball.r*sh,ball.r*.25*sh,0,0,7);ctx.fill();
+    ctx.fillStyle='rgba(0,0,0,.18)';const sh=Math.max(.3,1-(gy-ball.y)/H);ctx.beginPath();ctx.ellipse(ball.x,gy+6,ball.r*sh,ball.r*.25*sh,0,0,7);ctx.fill();
     ctx.font=Math.round(H*0.09)+'px serif';ctx.textBaseline='bottom';ctx.fillText(performance.now()-lastKick<180?'🕺':'💃',dancerX,gy+10);ctx.textBaseline='alphabetic';
     ballDraw(ball);
-    ctx.textAlign='center';pops=pops.filter(p=>(p.t+=dt)<.8);pops.forEach(p=>{ctx.globalAlpha=1-p.t/.8;ctx.fillStyle=p.big?'#ffd24d':'#fff';ctx.font='800 '+(p.big?26:18)+'px system-ui';ctx.fillText(p.w,p.x,p.y-p.t*50);});ctx.globalAlpha=1;
+    ctx.textAlign='center';pops=pops.filter(p=>(p.t+=dt)<.8);pops.forEach(p=>{ctx.globalAlpha=1-p.t/.8;ctx.fillStyle=p.big?(L?'#d9620a':'#ffd24d'):(L?'#3a2410':'#fff');ctx.font='800 '+(p.big?26:18)+'px system-ui';ctx.fillText(p.w,p.x,p.y-p.t*50);});ctx.globalAlpha=1;
   }
   requestAnimationFrame(frame);
 }
@@ -410,7 +410,5 @@ window.__ch={start,kick,end,state:()=>state,touches:()=>touches,ball:()=>ball,se
 })();
 </script>
 <script>if("serviceWorker" in navigator && location.protocol.indexOf("http")===0)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})});</script>
-
-
 <!--HOWTO--><script src="tea-hub.js"></script><script src="howto.js"></script><!--/HOWTO-->
 </body></html>

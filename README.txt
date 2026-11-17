@@ -54,3 +54,7 @@ Supporter pass: set window.TEA_PASS = { url:'<your Ko-fi/Stripe link>', codes:['
   (or edit the TEA_PASS default in tea-hub.js). Make a hash with:  python3 make_code.py MYCODE   (included in the source folder).
   Codes are checked on the device; for stronger protection verify in the Worker later.
 Worker: re-paste worker-index.js into Cloudflare (adds chinlone, yangon-dash, myanmar-memory to the leaderboard).
+
+--- THEME (new) ---
+Light is now the default look. The home page has a "Dark mode" / "Light mode" button; the choice is remembered on the device.
+tea-theme.js holds all light-mode colours (edit the CSS strings at the top if you want to tweak them).

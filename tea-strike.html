@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
+<head><!--THEME--><script src="tea-theme.js"></script><!--/THEME-->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Tea Strike — We Eat Tea</title>
@@ -908,13 +908,14 @@
 
   function drawBackground(){
     const g = ctx.createLinearGradient(0,0,0,BASE_H);
-    g.addColorStop(0, rgb(sky.top)); g.addColorStop(1, rgb(sky.bot));
+    const LT = a => window.TEA_LIGHT ? a.map(v=>Math.round(v+(255-v)*0.68)) : a;
+    g.addColorStop(0, rgb(LT(sky.top))); g.addColorStop(1, rgb(LT(sky.bot)));
     ctx.fillStyle = g; ctx.fillRect(0,0,BASE_W,BASE_H);
 
     // stars (stronger on night themes)
     ctx.fillStyle = '#cfe0ff';
     stars.forEach(s=>{
-      ctx.globalAlpha = (0.12 + 0.6*sky.night) * (0.6+0.4*Math.sin(tick*0.05+s.tw));
+      ctx.globalAlpha = (window.TEA_LIGHT?0.03:0.12 + 0.6*sky.night) * (0.6+0.4*Math.sin(tick*0.05+s.tw));
       ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,TAU); ctx.fill();
     });
     ctx.globalAlpha = 1;
@@ -932,7 +933,7 @@
       }
       for(let x=BASE_W;x>=0;x-=16) ctx.lineTo(x, y+bandH + Math.sin(x*0.018+(idx+1)*1.7)*10);
       ctx.closePath();
-      ctx.fillStyle = rgba(sky.ground, alt?0.30:0.18);
+      ctx.fillStyle = rgba(window.TEA_LIGHT ? sky.ground.map(v=>Math.round(v*0.7)) : sky.ground, alt?0.30:0.18);
       ctx.fill();
       ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.lineWidth = 1.5;
       ctx.beginPath();
@@ -1212,6 +1213,8 @@
 })();
 </script>
 <!--PWA-SW--><script>if("serviceWorker" in navigator && location.protocol.indexOf("http")===0)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})});</script><!--/PWA-SW-->
+
+
 
 
 

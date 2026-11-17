@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8">
+<html lang="en"><head><!--THEME--><script src="tea-theme.js"></script><!--/THEME--><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>We Eat Tea – Games</title>
 <style>
@@ -24,6 +24,7 @@ footer{text-align:center;font-size:12px;opacity:.6;margin-top:24px}
 </style><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#1c120b"><link rel="apple-touch-icon" href="icon-192.png">
 </head><body><main>
 <h1>🍵 We Eat Tea Games</h1><p class="sub">Quick Myanmar-food games. Beat the world's high scores!</p>
+<button id="themeBtn" style="float:right;border:1px solid #4a3220;background:var(--card);color:var(--ink);border-radius:20px;padding:6px 12px;font:700 12px system-ui,sans-serif;cursor:pointer;margin:-4px 0 8px 8px"></button>
 <div id="strip"><div><b id="stStreak">0</b>🔥 day streak</div><div><b id="stBest">0</b>🏅 best streak</div><div><b id="stBadges">0</b>🎖️ badges</div></div>
 <h2 class="sec">🇲🇲 Myanmar Corner</h2>
 <a class="g" href="fortune-tea.html" data-game="fortune-tea"><div class="e">🏮</div><div><b>Fortune Tea</b><span>Draw a fortune stick — one free fortune every day</span></div></a>
@@ -76,4 +77,5 @@ var SUPPORT = window.TEA_SUPPORT || {links:[], note:'', contact:''};
   paint();
 })();
 </script>
+<script>(function(){var b=document.getElementById('themeBtn');if(!b||!window.TeaTheme)return;b.textContent=window.TEA_LIGHT?'🌙 Dark mode':'☀️ Light mode';b.onclick=function(){TeaTheme.toggle();};})();</script>
 </body></html>
